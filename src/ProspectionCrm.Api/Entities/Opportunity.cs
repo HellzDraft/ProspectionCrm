@@ -6,7 +6,9 @@ public class Opportunity
     public required string Title { get; set; }
     public Guid? CompanyId { get; set; }
     public Guid? ContactId { get; set; }
-    public string? Status { get; set; }
+    public required string PipelineCode { get; set; }
+    public required string StatusCode { get; set; }
+    public required string PriorityCode { get; set; }
     public string? Location { get; set; }
     public string? SourceName { get; set; }
     public string? SourceUrl { get; set; }

@@ -12,7 +12,7 @@ using ProspectionCrm.Api.Data;
 namespace ProspectionCrm.Api.Data.Migrations
 {
     [DbContext(typeof(ProspectionCrmDbContext))]
-    [Migration("20260921172945_InitialCrmModel")]
+    [Migration("20260921174108_InitialCrmModel")]
     partial class InitialCrmModel
     {
         /// <inheritdoc />
@@ -129,7 +129,7 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Property<bool>("IsCompleted")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid?>("OpportunityId")
+                    b.Property<Guid>("OpportunityId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Title")
@@ -174,6 +174,16 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .HasMaxLength(10000)
                         .HasColumnType("character varying(10000)");
 
+                    b.Property<string>("PipelineCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("PriorityCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<string>("SourceName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -182,9 +192,10 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
-                    b.Property<string>("Status")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -204,7 +215,7 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                     b.HasIndex("SourceUrl");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("StatusCode");
 
                     b.ToTable("Opportunities");
                 });
@@ -224,7 +235,8 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.HasOne("ProspectionCrm.Api.Entities.Opportunity", "Opportunity")
                         .WithMany("CrmTasks")
                         .HasForeignKey("OpportunityId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Opportunity");
                 });

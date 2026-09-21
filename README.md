@@ -92,7 +92,7 @@ Les migrations sont appliquées explicitement, jamais au démarrage. `dotnet res
 
 Le modèle comprend uniquement `Companies`, `Contacts`, `Opportunities` et `CrmTasks` (EF ajoute sa table technique d'historique des migrations). Les identifiants sont des `Guid`. Les dates sont des `DateTimeOffset` en UTC, stockées en `timestamp with time zone` ; fournir un décalage zéro pour les dates affectées explicitement. `CreatedAt` est initialisé avec `DateTimeOffset.UtcNow` ; `UpdatedAt` et `CompletedAt` ne sont pas renseignés automatiquement.
 
-Les liens vers Company et Contact sont facultatifs : leur suppression conserve les objets liés et met leur clé étrangère à null. La suppression d'une Opportunity supprime ses CrmTasks en cascade ; les tâches générales sans Opportunity restent indépendantes. Tous les index métier sont non uniques. Le front continue à utiliser ses données en mémoire.
+Les liens vers Company et Contact sont facultatifs : leur suppression conserve les objets liés et met leur clé étrangère à null. Chaque CrmTask appartient obligatoirement à une Opportunity ; la suppression d'une Opportunity supprime ses CrmTasks en cascade. Tous les index métier sont non uniques. Le front continue à utiliser ses données en mémoire.
 
 Pour arrêter PostgreSQL sans supprimer les données :
 

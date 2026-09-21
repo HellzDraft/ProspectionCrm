@@ -61,7 +61,9 @@ namespace ProspectionCrm.Api.Data.Migrations
                     Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     CompanyId = table.Column<Guid>(type: "uuid", nullable: true),
                     ContactId = table.Column<Guid>(type: "uuid", nullable: true),
-                    Status = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    PipelineCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    StatusCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    PriorityCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     Location = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     SourceName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     SourceUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
@@ -92,7 +94,7 @@ namespace ProspectionCrm.Api.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    OpportunityId = table.Column<Guid>(type: "uuid", nullable: true),
+                    OpportunityId = table.Column<Guid>(type: "uuid", nullable: false),
                     Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Description = table.Column<string>(type: "character varying(10000)", maxLength: 10000, nullable: true),
                     DueAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -162,9 +164,9 @@ namespace ProspectionCrm.Api.Data.Migrations
                 column: "SourceUrl");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Opportunities_Status",
+                name: "IX_Opportunities_StatusCode",
                 table: "Opportunities",
-                column: "Status");
+                column: "StatusCode");
         }
 
         /// <inheritdoc />

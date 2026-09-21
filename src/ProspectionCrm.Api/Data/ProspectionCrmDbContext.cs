@@ -36,7 +36,9 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
         var opportunity = modelBuilder.Entity<Opportunity>();
         opportunity.HasKey(x => x.Id);
         opportunity.Property(x => x.Title).IsRequired().HasMaxLength(200);
-        opportunity.Property(x => x.Status).HasMaxLength(100);
+        opportunity.Property(x => x.PipelineCode).IsRequired().HasMaxLength(50);
+        opportunity.Property(x => x.StatusCode).IsRequired().HasMaxLength(50);
+        opportunity.Property(x => x.PriorityCode).IsRequired().HasMaxLength(50);
         opportunity.Property(x => x.Location).HasMaxLength(200);
         opportunity.Property(x => x.SourceName).HasMaxLength(200);
         opportunity.Property(x => x.SourceUrl).HasMaxLength(2048);
@@ -47,7 +49,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
             .HasForeignKey(x => x.ContactId).OnDelete(DeleteBehavior.SetNull);
         opportunity.HasIndex(x => x.CompanyId);
         opportunity.HasIndex(x => x.ContactId);
-        opportunity.HasIndex(x => x.Status);
+        opportunity.HasIndex(x => x.StatusCode);
         opportunity.HasIndex(x => x.SourceUrl);
         opportunity.HasIndex(x => x.FollowUpDueAt);
 
@@ -56,7 +58,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
         crmTask.Property(x => x.Title).IsRequired().HasMaxLength(200);
         crmTask.Property(x => x.Description).HasMaxLength(10000);
         crmTask.HasOne(x => x.Opportunity).WithMany(x => x.CrmTasks)
-            .HasForeignKey(x => x.OpportunityId).OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(x => x.OpportunityId).IsRequired().OnDelete(DeleteBehavior.Cascade);
         crmTask.HasIndex(x => x.OpportunityId);
         crmTask.HasIndex(x => x.DueAt);
         crmTask.HasIndex(x => x.IsCompleted);
