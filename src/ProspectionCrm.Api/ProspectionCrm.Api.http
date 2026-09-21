@@ -1,6 +1,7 @@
 @ProspectionCrm.Api_HostAddress = http://localhost:5016
 
-GET {{ProspectionCrm.Api_HostAddress}}/weatherforecast/
+### Document OpenAPI disponible en environnement Development
+GET {{ProspectionCrm.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
 
 ###
