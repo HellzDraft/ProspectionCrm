@@ -1,0 +1,15 @@
+﻿.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+    .nav-menu a {
+        padding: 10px 12px;
+        text-decoration: none;
+        border-radius: 6px;
+    }
+
+        .nav-menu a.active {
+            font-weight: 700;
+        }

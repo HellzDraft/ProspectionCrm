@@ -1,0 +1,154 @@
+﻿@page "/"
+
+@inject FollowUpActionService FollowUpActionService
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+
+<p>Vue d'ensemble de votre prospection professionnelle.</p>
+
+<button @onclick="AddOpportunity">
+    Simuler une nouvelle opportunité
+</button>
+
+<button @onclick="RemoveOpportunity">
+    Retirer une opportunité
+</button>
+
+<div>
+    <label>Opportunités actives :</label>
+    <input type="number" @bind="activeOpportunities"/>
+</div>
+
+<section>
+    <h2>Résumé</h2>
+
+    <div class="stats-grid">
+        @foreach (var stat in summaryStats)
+        {
+            <DashboardStatCard Title="@stat.Title" Value="@stat.Value" />
+        }
+    </div>
+</section>
+
+<section>
+    <h2>Répartition par pipeline</h2>
+
+    <div class="stats-grid">
+        @foreach (var stat in pipelineStats)
+        {
+            <DashboardStatCard Title="@stat.Title" Value="@stat.Value" />
+        }
+    </div>
+</section>
+
+<section>
+    <h2>Prochaines actions</h2>
+
+    @if (!nextActions.Any())
+    {
+        <p>Aucune action à traiter.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Échéance</th>
+                    <th>Opportunité</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var action in nextActions)
+                {
+                    <tr>
+                        <td>
+                            <strong>@action.Title</strong>
+                        </td>
+
+                        <td>
+                            @action.DueDate.ToString("dd/MM/yyyy")
+                        </td>
+
+                        <td>
+                            @if (action.OpportunityId is not null)
+                            {
+                                <NavLink href="@($"/opportunities/{action.OpportunityId}")">
+                                    @action.OpportunityTitle
+                                </NavLink>
+                            }
+                            else
+                            {
+                                <span>Aucune</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private int activeOpportunities = 24;
+
+    private List<FollowUpActionDto> followUpActions = [];
+
+    private int todayActionsCount =>
+    followUpActions.Count(action =>
+        FollowUpActionHelper.IsDueToday(action));
+
+    private int upcomingActionsCount =>
+        followUpActions.Count(action =>
+            !action.IsCompleted
+            && !FollowUpActionHelper.IsOverdue(action)
+            && !FollowUpActionHelper.IsDueToday(action));
+
+    private record DashboardStat(string Title, int Value);
+
+    private int overdueActionsCount =>
+   followUpActions.Count(action =>
+       FollowUpActionHelper.IsOverdue(action));
+
+    private IEnumerable<FollowUpActionDto> nextActions =>
+    followUpActions
+        .Where(action => !action.IsCompleted)
+        .OrderBy(action => action.DueDate)
+        .Take(5);
+
+    private List<DashboardStat> pipelineStats =
+    [
+        new(".NET", 9),
+        new("Malt / Freelance", 4),
+        new("Emploi jeu vidéo", 6),
+        new("Business jeu vidéo", 5)
+    ];
+
+    private List<DashboardStat> summaryStats =>
+[
+    new("Opportunités actives", activeOpportunities),
+    new("Relances en retard", overdueActionsCount),
+    new("Actions aujourd'hui", todayActionsCount),
+    new("Actions à venir", upcomingActionsCount)
+];
+
+    private void AddOpportunity()
+    {
+        activeOpportunities++;
+    }
+
+    private void RemoveOpportunity()
+    {
+        if (activeOpportunities == 0)
+            return;
+        activeOpportunities--;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        followUpActions = await FollowUpActionService.GetAllAsync();
+    }
+}

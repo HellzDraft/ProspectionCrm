@@ -1,0 +1,31 @@
+﻿.view-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.kanban-board {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    overflow-x: auto;
+}
+
+.kanban-column {
+    min-width: 280px;
+    padding: 16px;
+    border: 1px solid #dddddd;
+    border-radius: 8px;
+}
+
+    .kanban-column h2 {
+        margin-top: 0;
+        font-size: 1rem;
+    }
+
+.pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+}

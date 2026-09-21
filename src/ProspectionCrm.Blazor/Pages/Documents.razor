@@ -1,0 +1,84 @@
+﻿@page "/documents"
+
+@inject DocumentReferenceService DocumentReferenceService
+
+<PageTitle>Documents</PageTitle>
+
+<h1>Documents</h1>
+
+<p>Références vers les documents utilisés dans les démarches.</p>
+
+@if (isLoading)
+{
+    <p>Chargement des documents...</p>
+}
+else if (errorMessage is not null)
+{
+    <p>@errorMessage</p>
+}
+else if (!documents.Any())
+{
+    <p>Aucun document enregistré.</p>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Type</th>
+                <th>Emplacement</th>
+                <th>opportunité</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var document in documents)
+            {
+                <tr>
+                    <td>@document.Name</td>
+                    <td>@document.Type</td>
+                    <td>@document.Location</td>
+                    <td>
+                        @if (document.OpportunityId is not null)
+                        {
+                            <NavLink href="@($"/opportunities/{document.OpportunityId}")">
+                                @document.OpportunityTitle
+                            </NavLink>
+                        }
+                        else
+                        {
+                            <span>Aucune</span>
+                        }
+                    </td>
+                    <td>@document.Notes</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code{
+    private List<DocumentReferenceDto> documents = [];
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            documents = await DocumentReferenceService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger les contacts.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

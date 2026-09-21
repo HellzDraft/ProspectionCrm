@@ -1,0 +1,101 @@
+﻿@page "/actions/create"
+
+@inject FollowUpActionService FollowUpActionService
+@inject OpportunityService OpportunityService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Ajouter une action</PageTitle>
+
+<h1>Ajouter une action</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else
+{
+    <EditForm Model="@model" OnValidSubmit="HandleValidSubmit">
+
+        <DataAnnotationsValidator />
+
+        <ValidationSummary />
+
+        <div>
+            <label>Titre</label>
+
+            <InputText @bind-Value="model.Title" />
+
+            <ValidationMessage For="@(() => model.Title)" />
+        </div>
+
+        <div>
+            <label>Échéance</label>
+
+            <InputDate @bind-Value="model.DueDate" />
+        </div>
+
+        <div>
+            <label>Opportunité</label>
+
+            <InputSelect @bind-Value="model.OpportunityId">
+
+                <option value="">Aucune opportunité</option>
+
+                @foreach (var opportunity in opportunities)
+                {
+                    <option value="@opportunity.Id">
+                        @opportunity.Title
+                    </option>
+                }
+
+            </InputSelect>
+        </div>
+
+        <div>
+            <label>Notes</label>
+
+            <InputText @bind-Value="model.Notes" />
+        </div>
+
+        <button type="submit">
+            Ajouter
+        </button>
+
+    </EditForm>
+}
+
+@code
+{
+    private FollowUpActionFormModel model = new();
+
+    private List<OpportunityDto> opportunities = [];
+
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        opportunities = await OpportunityService.GetAllAsync();
+
+        isLoading = false;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        var selectedOpportunity = opportunities.FirstOrDefault(
+            opportunity => opportunity.Id == model.OpportunityId);
+
+        var action = new FollowUpActionDto
+        {
+            Title = model.Title,
+            DueDate = model.DueDate,
+            IsCompleted = false,
+            OpportunityId = model.OpportunityId,
+            OpportunityTitle = selectedOpportunity?.Title ?? string.Empty,
+            Notes = model.Notes
+        };
+
+        await FollowUpActionService.AddAsync(action);
+
+        NavigationManager.NavigateTo("/actions");
+    }
+}

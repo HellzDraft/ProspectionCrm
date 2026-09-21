@@ -1,0 +1,12 @@
+﻿<div class="stat-card">
+    <span class="stat-value">@Value</span>
+    <span class="stat-title">@Title</span>
+</div>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public int Value { get; set; }
+}

@@ -1,0 +1,82 @@
+﻿@page "/companies"
+
+@inject CompanyService CompanyService
+
+<PageTitle>Entreprises</PageTitle>
+
+<h1>Entreprises</h1>
+
+<p>Liste des entreprises suivies dans le CRM.</p>
+
+@if (isLoading)
+{
+    <p>Chargement des entreprises...</p>
+}
+else if (errorMessage is not null)
+{
+    <p>@errorMessage</p>
+}
+else if (!companies.Any())
+{
+    <p>Aucune entreprise enregistrée.</p>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Type</th>
+                <th>Secteur</th>
+                <th>Localisation</th>
+                <th>Site web</th>
+                <th>Notes</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var company in companies)
+            {
+                <tr>
+                    <td>@company.Name</td>
+                    <td>@company.Type</td>
+                    <td>@company.Industry</td>
+                    <td>@company.Location</td>
+                    <td>@company.Website</td>
+                    <td>@company.Notes</td>
+                    <td>
+                            <NavLink href="@($"/companies/{company.Id}")">
+                                Voir
+                            </NavLink>
+                        </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+
+    private List<CompanyDto> companies = [];
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            companies = await CompanyService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger les entreprises.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

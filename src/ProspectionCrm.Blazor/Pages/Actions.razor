@@ -1,0 +1,202 @@
+﻿@page "/actions"
+
+@inject FollowUpActionService FollowUpActionService
+
+<PageTitle>Actions</PageTitle>
+
+<NavLink href="/actions/create">
+    Ajouter une action
+</NavLink>
+
+<h1>Actions</h1>
+
+<p>Liste des actions.</p>
+
+@if (isLoading)
+{
+    <p>Chargement des actions...</p>
+}
+else if (errorMessage is not null)
+{
+    <p>@errorMessage</p>
+}
+else if (!actions.Any())
+{
+    <p>Aucune action enregistrée.</p>
+}
+else
+{
+    <div class="action-filters">
+        <button class="@GetFilterButtonClass(ActionFilterStatus.All)"
+            @onclick="() => selectedStatus = ActionFilterStatus.All">
+            Toutes
+        </button>
+
+        <button class="@GetFilterButtonClass(ActionFilterStatus.Overdue)"
+            @onclick="() => selectedStatus = ActionFilterStatus.Overdue">
+            En retard
+        </button>
+
+        <button class="@GetFilterButtonClass(ActionFilterStatus.Today)"
+            @onclick="() => selectedStatus = ActionFilterStatus.Today">
+            Aujourd'hui
+        </button>
+
+        <button class="@GetFilterButtonClass(ActionFilterStatus.Upcoming)"
+            @onclick="() => selectedStatus = ActionFilterStatus.Upcoming">
+            À venir
+        </button>
+
+        <button class="@GetFilterButtonClass(ActionFilterStatus.Completed)"
+            @onclick="() => selectedStatus = ActionFilterStatus.Completed">
+            Terminées
+        </button>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Échéance</th>
+                <th>Opportunité</th>
+                <th>Statut</th>
+                <th>Note</th>
+                <th>Terminée</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var action in filteredActions)
+            {
+                <tr>
+                    <td>@action.Title</td>
+                    <td>@action.DueDate.ToString("dd/MM/yyyy")</td>
+                    <td>
+                        @if (action.OpportunityId is not null)
+                        {
+                            <NavLink href="@($"/opportunities/{action.OpportunityId}")">
+                                @action.OpportunityTitle
+                            </NavLink>
+                        }
+                        else
+                        {
+                            <span>Aucune</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="action-status @GetStatusClass(action)">
+                            @GetStatusLabel(action)
+                        </span>
+                    </td>
+                    <td>@action.Notes</td>
+                    <td>
+                        <input type="checkbox"
+                               @bind="action.IsCompleted"
+                               @bind:after="() => HandleCompletionChanged(action)" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+
+    private List<FollowUpActionDto> actions = [];
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    private ActionFilterStatus selectedStatus = ActionFilterStatus.All;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            actions = await FollowUpActionService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger les actions.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetStatusClass(FollowUpActionDto action)
+    {
+        if (action.IsCompleted)
+        {
+            return "status-completed";
+        }
+
+        if (FollowUpActionHelper.IsOverdue(action))
+        {
+            return "status-overdue";
+        }
+
+        if (FollowUpActionHelper.IsOverdue(action))
+        {
+            return "status-today";
+        }
+
+        return "status-upcoming";
+    }
+
+    private string GetStatusLabel(FollowUpActionDto action)
+    {
+        if (action.IsCompleted)
+        {
+            return "Terminée";
+        }
+
+        if (FollowUpActionHelper.IsOverdue(action))
+        {
+            return "En retard";
+        }
+
+        if (FollowUpActionHelper.IsDueToday(action))
+        {
+            return "Aujourd'hui";
+        }
+
+        return "À venir";
+    }
+
+    private async Task HandleCompletionChanged(FollowUpActionDto action)
+    {
+        await FollowUpActionService.UpdateCompletionAsync(
+            action.Id,
+            action.IsCompleted);
+    }
+
+    private IEnumerable<FollowUpActionDto> filteredActions =>
+    selectedStatus switch
+    {
+        ActionFilterStatus.Overdue => actions.Where(action =>
+            FollowUpActionHelper.IsOverdue(action)),
+
+        ActionFilterStatus.Today => actions.Where(action =>
+            FollowUpActionHelper.IsDueToday(action)),
+
+        ActionFilterStatus.Upcoming => actions.Where(action =>
+            !action.IsCompleted
+            && !FollowUpActionHelper.IsOverdue(action)
+            && !FollowUpActionHelper.IsDueToday(action)),
+
+        ActionFilterStatus.Completed => actions.Where(action =>
+            action.IsCompleted),
+
+        _ => actions
+    };
+
+    private string GetFilterButtonClass(ActionFilterStatus status)
+    {
+        return selectedStatus == status
+            ? "filter-button active"
+            : "filter-button";
+    }
+}

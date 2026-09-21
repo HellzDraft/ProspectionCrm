@@ -1,0 +1,80 @@
+﻿@page "/contacts"
+
+@inject ContactService ContactService
+
+<PageTitle>Contacts</PageTitle>
+
+<h1>Contacts</h1>
+
+<p>Liste des contacts suivis dans le CRM</p>
+
+@if (isLoading)
+{
+    <p>Chargement des contacts...</p>
+}
+else if (errorMessage is not null)
+{
+    <p>@errorMessage</p>
+}
+else if (!contacts.Any())
+{
+    <p>Aucun contact enregistré.</p>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Fonction</th>
+                <th>Entreprise</th>
+                <th>Email</th>
+                <th>Téléphone</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var contact in contacts)
+            {
+                <tr>
+                    <td>@contact.FirstName @contact.LastName</td>
+                    <td>@contact.Role</td>
+                    <td>@contact.CompanyName</td>
+                    <td>@contact.Email</td>
+                    <td>@contact.Phone</td>
+                    <td>
+                            <NavLink href="@($"/contacts/{contact.Id}")">
+                                Voir
+                            </NavLink>
+                        </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+
+    private List<ContactDto> contacts = [];
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            contacts = await ContactService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger les contacts.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

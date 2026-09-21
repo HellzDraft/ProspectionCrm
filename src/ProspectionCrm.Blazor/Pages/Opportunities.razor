@@ -1,0 +1,325 @@
+﻿@page "/opportunities"
+
+@inject OpportunityService OpportunityService
+
+<PageTitle>Opportunités</PageTitle>
+
+<h1>Opportunités</h1>
+
+<p>Liste des opportunités de prospection professionnelle.</p>
+
+<NavLink href="/opportunities/create">
+    Ajouter une opportunité
+</NavLink>
+
+<div class="view-selector">
+    <button @onclick="ShowTableView">
+        Tableau
+    </button>
+
+    <button @onclick="ShowKanbanView">
+        Kanban
+    </button>
+</div>
+
+<div class="opportunities-toolbar">
+    <input type="text"
+           placeholder="Rechercher une opportunité..."
+           @bind="searchTerm"
+           @bind:event="oninput"
+           @bind:after="ResetPagination" />
+
+    <select @bind="selectedPipeline"
+            @bind:after="ResetPagination">
+        <option value="">Tous les pipelines</option>
+        <option value="@PipelineType.DotNet">.NET</option>
+        <option value="@PipelineType.MaltFreelance">Malt / Freelance</option>
+        <option value="@PipelineType.GameJob">Emploi jeu vidéo</option>
+        <option value="@PipelineType.GameBusiness">Business jeu vidéo</option>
+    </select>
+</div>
+
+@if (isLoading)
+{
+    <p>Chargement des opportunités...</p>
+}
+else if (errorMessage is not null)
+{
+    <p>@errorMessage</p>
+}
+else if (!filteredOpportunities.Any())
+{
+    <p>Aucune opportunité ne correspond aux critères.</p>
+}
+else
+{
+    @if (isKanbanView)
+    {
+        <div class="kanban-board">
+            @foreach (var status in kanbanStatuses)
+            {
+                <section class="kanban-column">
+                    <h2>
+                        @OpportunityDisplayHelper.GetStatusLabel(status)
+                    </h2>
+
+                    @foreach (var opportunity in filteredOpportunities.Where(
+                        opportunity => opportunity.Status == status))
+                    {
+                        <OpportunityCard Opportunity="@opportunity"
+                                         AllowStatusChange="true"
+                                         OnStatusChange="@(newStatus => HandleStatusChange(opportunity.Id, newStatus))" />
+                    }
+                </section>
+            }
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>
+                        <button @onclick='() => SetSort("Title")'>
+                            Titre
+                        </button>
+                    </th>
+                    <th>
+                        <button @onclick='() => SetSort("CompanyName")'>
+                            Entreprise
+                        </button>
+                    </th>
+                    <th>
+                        <button @onclick='() => SetSort("Pipeline")'>
+                            Pipeline
+                        </button>
+                    </th>
+                    <th>
+                        <button @onclick='() => SetSort("Status")'>
+                            Status
+                        </button>
+                    </th>
+                    <th>
+                        <button @onclick='() => SetSort("Priority")'>
+                            Priorité
+                        </button>
+                    </th>
+                    <th>
+                        <button @onclick='() => SetSort("Location")'>
+                            Localisation
+                        </button>
+                    </th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var opportunity in pagedOpportunities)
+                {
+                    <tr>
+                        <td>@opportunity.Title</td>
+                        <td>@opportunity.CompanyName</td>
+
+                        <td>
+                            <span class="pipeline-badge @GetPipelineClass(opportunity.Pipeline)">
+                                @OpportunityDisplayHelper.GetPipelineLabel(opportunity.Pipeline)
+                            </span>
+                        </td>
+
+                        <td>@OpportunityDisplayHelper.GetStatusLabel(opportunity.Status)</td>
+
+                        <td>
+                            <span class="priority-badge @GetPriorityClass(opportunity.Priority)">
+                                @OpportunityDisplayHelper.GetPriorityLabel(opportunity.Priority)
+                            </span>
+                        </td>
+
+                        <td>@opportunity.Location</td>
+
+                        <td>
+                            <NavLink href="@($"/opportunities/{opportunity.Id}")">
+                                Voir
+                            </NavLink>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="pagination">
+            <button @onclick="PreviousPage"
+                    disabled="@(currentPage <= 1)">
+                Précédent
+            </button>
+
+            <span>
+                Page @currentPage sur @totalPages
+            </span>
+
+            <button @onclick="NextPage"
+                    disabled="@(currentPage >= totalPages)">
+                Suivant
+            </button>
+        </div>
+    }
+}
+
+@code {
+    private List<OpportunityDto> opportunities = [];
+
+    private string searchTerm = string.Empty;
+
+    private PipelineType? selectedPipeline;
+
+    private string sortColumn = "Title";
+    private bool sortAscending = true;
+
+    private int currentPage = 1;
+    private int pageSize = 2;
+
+    private IEnumerable<OpportunityDto> filteredOpportunities =>
+    opportunities.Where(opportunity =>
+        (
+            opportunity.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+            || opportunity.CompanyName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+        )
+        &&
+        (
+            selectedPipeline is null
+            || opportunity.Pipeline == selectedPipeline.Value
+        ));
+
+    
+
+    private string GetPriorityClass(OpportunityPriority priority)
+    {
+        return priority switch
+        {
+            OpportunityPriority.Low => "priority-low",
+            OpportunityPriority.Normal => "priority-normal",
+            OpportunityPriority.High => "priority-high",
+            _ => string.Empty
+        };
+    }
+
+    private string GetPipelineClass(PipelineType pipeline)
+    {
+        return pipeline switch
+        {
+            PipelineType.DotNet => "pipeline-dotnet",
+            PipelineType.MaltFreelance => "pipeline-malt",
+            PipelineType.GameJob => "pipeline-game-job",
+            PipelineType.GameBusiness => "pipeline-game-business",
+            _ => string.Empty
+        };
+    }
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            opportunities = await OpportunityService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger les opportunités.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private bool isKanbanView;
+
+    private void ShowTableView()
+    {
+        isKanbanView = false;
+    }
+
+    private void ShowKanbanView()
+    {
+        isKanbanView = true;
+    }
+    private async Task HandleStatusChange(
+    int opportunityId,
+    OpportunityStatus newStatus)
+    {
+        await OpportunityService.UpdateStatusAsync(
+            opportunityId,
+            newStatus);
+    }
+
+    private IReadOnlyList<OpportunityStatus> kanbanStatuses =>
+        selectedPipeline is null
+            ? []
+            : OpportunityWorkflow.GetAllowedStatuses(selectedPipeline.Value);
+
+    private IEnumerable<OpportunityDto> sortedOpportunities
+    {
+        get
+        {
+            var sorted = sortColumn switch
+            {
+                "CompanyName" => filteredOpportunities.OrderBy(opportunity => opportunity.CompanyName),
+                "Pipeline" => filteredOpportunities.OrderBy(opportunity => opportunity.Pipeline),
+                "Status" => filteredOpportunities.OrderBy(opportunity => opportunity.Status),
+                "Priority" => filteredOpportunities.OrderBy(opportunity => opportunity.Priority),
+                "Location" => filteredOpportunities.OrderBy(opportunity => opportunity.Location),
+
+                _ => filteredOpportunities.OrderBy(opportunity => opportunity.Title)
+            };
+
+            return sortAscending
+                ? sorted
+                : sorted.Reverse();
+        }
+    }
+    private void SetSort(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+            currentPage = 1;
+            return;
+        }
+
+        sortColumn = column;
+        sortAscending = true;
+        currentPage = 1;
+    }
+
+    private int totalPages =>
+    (int)Math.Ceiling(
+        sortedOpportunities.Count() / (double)pageSize);
+
+    private IEnumerable<OpportunityDto> pagedOpportunities =>
+sortedOpportunities
+    .Skip((currentPage - 1) * pageSize)
+    .Take(pageSize);
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void ResetPagination()
+    {
+        currentPage = 1;
+    }
+}

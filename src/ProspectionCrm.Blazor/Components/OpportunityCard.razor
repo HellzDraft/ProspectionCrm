@@ -1,0 +1,57 @@
+﻿<div class="opportunity-card">
+    <h2>@Opportunity.Title</h2>
+
+    <p>Entreprise : @Opportunity.CompanyName</p>
+    <p>Pipeline : @OpportunityDisplayHelper.GetPipelineLabel(Opportunity.Pipeline)</p>
+    <p>
+        Statut :
+        @OpportunityDisplayHelper.GetStatusLabel(Opportunity.Status)
+    </p>
+
+    <p>
+        Priorité :
+        @OpportunityDisplayHelper.GetPriorityLabel(Opportunity.Priority)
+    </p>
+    <p>Localisation : @Opportunity.Location</p>
+</div>
+
+@if (AllowStatusChange)
+{
+    <div>
+        <label>Changer le statut</label>
+
+        <select @bind:get="Opportunity.Status"
+                @bind:set="HandleStatusChanged">
+            @foreach (var status in availableStatuses)
+            {
+                <option value="@status">
+                    @OpportunityDisplayHelper.GetStatusLabel(status)
+                </option>
+            }
+        </select>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public OpportunityDto Opportunity { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<OpportunityStatus> OnStatusChange { get; set; }
+
+    [Parameter]
+public bool AllowStatusChange { get; set; }
+
+    private async Task ChangeStatus()
+    {
+        await OnStatusChange.InvokeAsync(Opportunity.Status);
+    }
+
+    private async Task HandleStatusChanged(OpportunityStatus newStatus)
+{
+    await OnStatusChange.InvokeAsync(newStatus);
+}
+
+    private IReadOnlyList<OpportunityStatus> availableStatuses =>
+    OpportunityWorkflow.GetAllowedStatuses(Opportunity.Pipeline);
+}

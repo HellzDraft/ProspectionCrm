@@ -1,0 +1,94 @@
+﻿<EditForm Model="@Model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+
+    <ValidationSummary />
+
+    <div>
+        <label>Titre</label>
+        <InputText @bind-Value="Model.Title" />
+        <ValidationMessage For="@(() => Model.Title)" />
+    </div>
+
+    <div>
+        <label>Entreprise</label>
+        <InputText @bind-Value="Model.CompanyName" />
+        <ValidationMessage For="@(() => Model.CompanyName)" />
+    </div>
+
+    <div>
+        <label>Pipeline</label>
+
+        <InputSelect @bind-Value="Model.Pipeline"
+                     @bind-Value:after="OnPipelineChanged">
+            <option value="">Sélectionner un pipeline</option>
+            <option value="@PipelineType.DotNet">.NET</option>
+            <option value="@PipelineType.MaltFreelance">Malt / Freelance</option>
+            <option value="@PipelineType.GameJob">Emploi jeu vidéo</option>
+            <option value="@PipelineType.GameBusiness">Business jeu vidéo</option>
+        </InputSelect>
+
+        <ValidationMessage For="@(() => Model.Pipeline)" />
+    </div>
+
+    <div>
+        <label>Statut</label>
+
+        <InputSelect @bind-Value="Model.Status">
+            <option value="">Sélectionner un statut</option>
+
+            @foreach (var status in availableStatuses)
+            {
+                <option value="@status">
+                    @OpportunityDisplayHelper.GetStatusLabel(status)
+                </option>
+            }
+        </InputSelect>
+
+        <ValidationMessage For="@(() => Model.Status)" />
+    </div>
+
+    <div>
+        <label>Priorité</label>
+
+        <InputSelect @bind-Value="Model.Priority">
+            <option value="@OpportunityPriority.Low">Faible</option>
+            <option value="@OpportunityPriority.Normal">Normale</option>
+            <option value="@OpportunityPriority.High">Haute</option>
+        </InputSelect>
+    </div>
+
+    <div>
+        <label>Localisation</label>
+        <InputText @bind-Value="Model.Location" />
+    </div>
+
+    <button type="submit">
+        @SubmitText
+    </button>
+</EditForm>
+
+@code {
+    [Parameter]
+    public OpportunityFormModel Model { get; set; } = default!;
+
+    [Parameter]
+    public string SubmitText { get; set; } = "Enregistrer";
+
+    [Parameter]
+    public EventCallback OnValidSubmit { get; set; }
+
+    private async Task HandleValidSubmit()
+    {
+        await OnValidSubmit.InvokeAsync();
+    }
+
+    private IReadOnlyList<OpportunityStatus> availableStatuses =>
+    Model.Pipeline is null
+        ? []
+        : OpportunityWorkflow.GetAllowedStatuses(Model.Pipeline.Value);
+
+    private void OnPipelineChanged()
+    {
+        Model.Status = null;
+    }
+}

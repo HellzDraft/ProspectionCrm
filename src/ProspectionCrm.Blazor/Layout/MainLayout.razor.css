@@ -1,0 +1,41 @@
+﻿.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 220px;
+    padding: 20px;
+    border-right: 1px solid #dddddd;
+}
+
+.main-content {
+    flex: 1;
+    padding: 24px;
+}
+
+@media (max-width: 800px) {
+    .app-layout {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .main-content {
+        padding: 16px;
+    }
+}
+
+.main-content {
+    flex: 1;
+    padding: clamp(16px, 3vw, 24px);
+}
+
+.sidebar {
+    width: 220px;
+    padding: clamp(12px, 2vw, 20px);
+}

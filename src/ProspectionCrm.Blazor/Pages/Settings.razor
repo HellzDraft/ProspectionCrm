@@ -1,0 +1,59 @@
+﻿@page "/settings"
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Settings</h1>
+
+<p>Parametres utilisateur.</p>
+
+<div>
+    <label>Nom de l'utilisateur</label>
+    <InputText @bind-Value="UserName" />
+</div>
+
+<div>
+    <label>Email</label>
+    <InputText @bind-Value="Email" />
+</div>
+
+<div>
+    <label>Pipeline par défaut</label>
+
+    <InputSelect @bind-Value="DefaultPipeline">
+        <option value="">Aucun pipeline par défaut</option>
+        <option value="@PipelineType.DotNet">.NET</option>
+        <option value="@PipelineType.MaltFreelance">Malt / Freelance</option>
+        <option value="@PipelineType.GameJob">Emploi jeu vidéo</option>
+        <option value="@PipelineType.GameBusiness">Business jeu vidéo</option>
+    </InputSelect>
+</div>
+
+
+<div>
+    <label>Nombre d'éléments par page</label>
+
+    <InputSelect @bind-Value="ItemsPage">
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+    </InputSelect>
+</div>
+
+<div>
+    <InputCheckbox @bind-Value="ShowCompletedActions" />
+    <label>Afficher les actions terminées</label>
+</div>
+
+@code{
+
+    private string UserName;
+
+    private string Email;
+
+    private PipelineType? DefaultPipeline;
+
+    private int ItemsPage = 25;
+
+    bool ShowCompletedActions;
+}

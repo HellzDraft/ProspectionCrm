@@ -1,0 +1,25 @@
+﻿@page "/opportunities/create"
+
+@inject OpportunityService OpportunityService
+
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nouvelle opportunité</PageTitle>
+
+<h1>Nouvelle opportunité</h1>
+
+<OpportunityForm Model="@model"
+                 SubmitText="Créer l'opportunité"
+                 OnValidSubmit="HandleValidSubmit" />
+
+
+@code {
+    private OpportunityFormModel model = new();
+
+    private async Task HandleValidSubmit()
+    {
+        await OpportunityService.AddAsync(model);
+
+        NavigationManager.NavigateTo("/opportunities");
+    }
+}

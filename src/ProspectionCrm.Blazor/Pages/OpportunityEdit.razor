@@ -1,0 +1,62 @@
+﻿@page "/opportunities/{Id:int}/edit"
+
+@inject OpportunityService OpportunityService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Modifier une opportunité</PageTitle>
+
+<h1>Modifier une opportunité</h1>
+
+@if (isLoading)
+{
+    <p>Chargement de l'opportunité...</p>
+}
+else if (notFound)
+{
+    <p>Opportunité introuvable.</p>
+}
+else
+{
+    <OpportunityForm Model="@model"
+                     SubmitText="Enregistrer les modifications"
+                     OnValidSubmit="HandleValidSubmit" />
+}
+
+@code{
+    [Parameter]
+    public int Id { get; set; }
+
+    private OpportunityFormModel model = new();
+
+    private bool isLoading = true;
+    private bool notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var opportunity = await OpportunityService.GetByIdAsync(Id);
+
+        if (opportunity is null)
+        {
+            notFound = true;
+            isLoading = false;
+            return;
+        }
+
+        model.Title = opportunity.Title;
+        model.CompanyName = opportunity.CompanyName;
+        model.Pipeline = opportunity.Pipeline;
+        model.Status = opportunity.Status;
+        model.Priority = opportunity.Priority;
+        model.Location = opportunity.Location;
+
+        isLoading = false;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        await OpportunityService.UpdateAsync(Id, model);
+
+        NavigationManager.NavigateTo($"/opportunities/{Id}");
+    }
+}
+
