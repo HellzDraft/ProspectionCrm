@@ -1,5 +1,7 @@
 @ProspectionCrm.Api_HostAddress = http://localhost:5016
 @opportunityId = 00000000-0000-0000-0000-000000000000
+@companyId = 00000000-0000-0000-0000-000000000000
+@contactId = 00000000-0000-0000-0000-000000000000
 
 ### Document OpenAPI disponible en environnement Development
 GET {{ProspectionCrm.Api_HostAddress}}/openapi/v1.json
@@ -46,3 +48,75 @@ Content-Type: application/json
 
 ###
 DELETE {{ProspectionCrm.Api_HostAddress}}/api/opportunities/{{opportunityId}}
+
+### Companies — liste
+GET {{ProspectionCrm.Api_HostAddress}}/api/companies
+Accept: application/json
+
+### Remplacer companyId par l'identifiant retourné par le POST Company
+GET {{ProspectionCrm.Api_HostAddress}}/api/companies/{{companyId}}
+Accept: application/json
+
+### Création Company
+POST {{ProspectionCrm.Api_HostAddress}}/api/companies
+Content-Type: application/json
+
+{
+  "name": "Entreprise exemple",
+  "website": "https://example.com",
+  "location": "Paris"
+}
+
+### Remplacement complet Company
+PUT {{ProspectionCrm.Api_HostAddress}}/api/companies/{{companyId}}
+Content-Type: application/json
+
+{
+  "name": "Entreprise exemple — mise à jour",
+  "website": null,
+  "location": "Lyon"
+}
+
+### Suppression Company (les références liées deviennent null)
+DELETE {{ProspectionCrm.Api_HostAddress}}/api/companies/{{companyId}}
+
+### Contacts — liste
+GET {{ProspectionCrm.Api_HostAddress}}/api/contacts
+Accept: application/json
+
+### Remplacer contactId par l'identifiant retourné par le POST Contact
+GET {{ProspectionCrm.Api_HostAddress}}/api/contacts/{{contactId}}
+Accept: application/json
+
+### Création Contact lié à une Company existante
+# Renseigner companyId avec l'identifiant d'une Company non supprimée.
+# Pour un Contact indépendant, remplacer "{{companyId}}" par null.
+POST {{ProspectionCrm.Api_HostAddress}}/api/contacts
+Content-Type: application/json
+
+{
+  "companyId": "{{companyId}}",
+  "firstName": "Camille",
+  "lastName": "Martin",
+  "email": "camille@example.com",
+  "phone": null,
+  "jobTitle": "Responsable recrutement",
+  "linkedInUrl": null
+}
+
+### Remplacement complet Contact, sans Company
+PUT {{ProspectionCrm.Api_HostAddress}}/api/contacts/{{contactId}}
+Content-Type: application/json
+
+{
+  "companyId": null,
+  "firstName": "Camille",
+  "lastName": "Martin",
+  "email": null,
+  "phone": null,
+  "jobTitle": "Responsable RH",
+  "linkedInUrl": null
+}
+
+### Suppression Contact (les références liées deviennent null)
+DELETE {{ProspectionCrm.Api_HostAddress}}/api/contacts/{{contactId}}
