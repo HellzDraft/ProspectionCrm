@@ -13,6 +13,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IContactService, ContactService>();
+builder.Services.AddScoped<ICrmTaskService, CrmTaskService>();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();

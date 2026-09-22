@@ -2,6 +2,7 @@
 @opportunityId = 00000000-0000-0000-0000-000000000000
 @companyId = 00000000-0000-0000-0000-000000000000
 @contactId = 00000000-0000-0000-0000-000000000000
+@crmTaskId = 00000000-0000-0000-0000-000000000000
 
 ### Document OpenAPI disponible en environnement Development
 GET {{ProspectionCrm.Api_HostAddress}}/openapi/v1.json
@@ -120,3 +121,52 @@ Content-Type: application/json
 
 ### Suppression Contact (les références liées deviennent null)
 DELETE {{ProspectionCrm.Api_HostAddress}}/api/contacts/{{contactId}}
+
+### CrmTasks — liste
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks
+
+### Tâches d'une Opportunity
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks?opportunityId={{opportunityId}}
+
+### Tâches ouvertes
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks?isCompleted=false
+
+### Tâches ouvertes d'une Opportunity
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks?opportunityId={{opportunityId}}&isCompleted=false
+
+### Relances dues
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/due
+
+### Détail — remplacer crmTaskId par l'identifiant retourné par le POST
+GET {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/{{crmTaskId}}
+
+### Création — une Opportunity valide doit exister ; renseigner opportunityId
+POST {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks
+Content-Type: application/json
+
+{
+  "opportunityId": "{{opportunityId}}",
+  "title": "Relancer le recruteur",
+  "description": "Envoyer un message de suivi.",
+  "dueAt": "2026-09-25T09:00:00Z"
+}
+
+### Remplacement complet des champs éditables
+PUT {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/{{crmTaskId}}
+Content-Type: application/json
+
+{
+  "opportunityId": "{{opportunityId}}",
+  "title": "Relancer le recruteur par téléphone",
+  "description": null,
+  "dueAt": "2026-09-28T10:00:00+02:00"
+}
+
+### Terminer (idempotent)
+POST {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/{{crmTaskId}}/complete
+
+### Rouvrir
+POST {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/{{crmTaskId}}/reopen
+
+### Supprimer
+DELETE {{ProspectionCrm.Api_HostAddress}}/api/crm-tasks/{{crmTaskId}}
