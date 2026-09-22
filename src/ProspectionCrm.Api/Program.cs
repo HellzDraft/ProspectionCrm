@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
+using ProspectionCrm.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,7 @@ builder.Services.AddDbContext<ProspectionCrmDbContext>(options =>
             "Configurez ConnectionStrings:DefaultConnection avec User Secrets ou une variable d'environnement.")));
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();

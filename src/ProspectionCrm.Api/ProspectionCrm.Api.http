@@ -1,7 +1,48 @@
 @ProspectionCrm.Api_HostAddress = http://localhost:5016
+@opportunityId = 00000000-0000-0000-0000-000000000000
 
 ### Document OpenAPI disponible en environnement Development
 GET {{ProspectionCrm.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
 
 ###
+GET {{ProspectionCrm.Api_HostAddress}}/api/opportunities
+Accept: application/json
+
+### Remplacer opportunityId par l'identifiant retourné par le POST
+GET {{ProspectionCrm.Api_HostAddress}}/api/opportunities/{{opportunityId}}
+Accept: application/json
+
+### Création sans Company ni Contact
+POST {{ProspectionCrm.Api_HostAddress}}/api/opportunities
+Content-Type: application/json
+
+{
+  "title": "Mission développeur .NET",
+  "companyId": null,
+  "contactId": null,
+  "pipelineCode": "dotnet",
+  "statusCode": "new",
+  "priorityCode": "normal"
+}
+
+### Remplacement complet des champs modifiables
+PUT {{ProspectionCrm.Api_HostAddress}}/api/opportunities/{{opportunityId}}
+Content-Type: application/json
+
+{
+  "title": "Mission développeur .NET — mise à jour",
+  "companyId": null,
+  "contactId": null,
+  "pipelineCode": "dotnet",
+  "statusCode": "contacted",
+  "priorityCode": "high",
+  "location": "Paris",
+  "sourceName": null,
+  "sourceUrl": null,
+  "notes": "Premier contact effectué.",
+  "followUpDueAt": "2026-10-01T09:00:00Z"
+}
+
+###
+DELETE {{ProspectionCrm.Api_HostAddress}}/api/opportunities/{{opportunityId}}
