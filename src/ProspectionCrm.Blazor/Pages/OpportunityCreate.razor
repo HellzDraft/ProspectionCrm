@@ -1,6 +1,6 @@
 ﻿@page "/opportunities/create"
 
-@inject OpportunityService OpportunityService
+@inject OpportunityApiService OpportunityApiService
 
 @inject NavigationManager NavigationManager
 
@@ -8,18 +8,40 @@
 
 <h1>Nouvelle opportunité</h1>
 
-<OpportunityForm Model="@model"
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+}
+
+<OpportunityApiForm Model="@model"
+                 IsSubmitting="@isSubmitting"
                  SubmitText="Créer l'opportunité"
                  OnValidSubmit="HandleValidSubmit" />
 
 
 @code {
-    private OpportunityFormModel model = new();
+    private OpportunityApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
 
     private async Task HandleValidSubmit()
     {
-        await OpportunityService.AddAsync(model);
-
-        NavigationManager.NavigateTo("/opportunities");
+        if (isSubmitting)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await OpportunityApiService.CreateAsync(OpportunityApiWriteRequest.FromForm(model));
+            NavigationManager.NavigateTo("/opportunities");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de créer l'opportunité.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
     }
 }

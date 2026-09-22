@@ -1,0 +1,91 @@
+<EditForm Model="@Model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <fieldset disabled="@IsSubmitting">
+        <div>
+            <label for="opportunity-title">Titre</label>
+            <InputText id="opportunity-title" @bind-Value="Model.Title" />
+            <ValidationMessage For="@(() => Model.Title)" />
+        </div>
+        <div>
+            <label for="opportunity-pipeline">Pipeline</label>
+            <InputSelect id="opportunity-pipeline" @bind-Value="Model.PipelineCode" @bind-Value:after="OnPipelineChanged">
+                <option value="">Sélectionner un pipeline</option>
+                @if (!string.IsNullOrEmpty(Model.PipelineCode) && !pipelineCodes.Contains(Model.PipelineCode))
+                {
+                    <option value="@Model.PipelineCode">@OpportunityCodeHelper.GetPipelineLabel(Model.PipelineCode)</option>
+                }
+                @foreach (var code in pipelineCodes)
+                {
+                    <option value="@(code)">@OpportunityCodeHelper.GetPipelineLabel(code)</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.PipelineCode)" />
+        </div>
+        <div>
+            <label for="opportunity-status">Statut</label>
+            <InputSelect id="opportunity-status" @bind-Value="Model.StatusCode">
+                <option value="">Sélectionner un statut</option>
+                @if (!string.IsNullOrEmpty(Model.StatusCode) && !availableStatusCodes.Contains(Model.StatusCode))
+                {
+                    <option value="@Model.StatusCode">@OpportunityCodeHelper.GetStatusLabel(Model.StatusCode)</option>
+                }
+                @foreach (var code in availableStatusCodes)
+                {
+                    <option value="@(code)">@OpportunityCodeHelper.GetStatusLabel(code)</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.StatusCode)" />
+        </div>
+        <div>
+            <label for="opportunity-priority">Priorité</label>
+            <InputSelect id="opportunity-priority" @bind-Value="Model.PriorityCode">
+                @if (!priorityCodes.Contains(Model.PriorityCode))
+                {
+                    <option value="@Model.PriorityCode">@OpportunityCodeHelper.GetPriorityLabel(Model.PriorityCode)</option>
+                }
+                @foreach (var code in priorityCodes)
+                {
+                    <option value="@(code)">@OpportunityCodeHelper.GetPriorityLabel(code)</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.PriorityCode)" />
+        </div>
+        <div>
+            <label for="opportunity-location">Localisation</label>
+            <InputText id="opportunity-location" @bind-Value="Model.Location" />
+            <ValidationMessage For="@(() => Model.Location)" />
+        </div>
+        <button type="submit" disabled="@IsSubmitting">@SubmitText</button>
+    </fieldset>
+</EditForm>
+
+@code {
+    [Parameter] public OpportunityApiFormModel Model { get; set; } = default!;
+    [Parameter] public string SubmitText { get; set; } = "Enregistrer";
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public bool IsEditing { get; set; }
+
+    private static readonly string[] pipelineCodes = Enum.GetValues<PipelineType>()
+        .Select(OpportunityCodeHelper.GetPipelineCode).ToArray();
+    private static readonly string[] priorityCodes = Enum.GetValues<OpportunityPriority>()
+        .Select(OpportunityCodeHelper.GetPriorityCode).ToArray();
+
+    private IEnumerable<string> availableStatusCodes =>
+        OpportunityCodeHelper.GetPipeline(Model.PipelineCode) is { } pipeline
+            ? OpportunityWorkflow.GetAllowedStatuses(pipeline).Select(OpportunityCodeHelper.GetStatusCode)
+            : [];
+
+    private void OnPipelineChanged()
+    {
+        if (!IsEditing)
+            Model.StatusCode = string.Empty;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (!IsSubmitting)
+            await OnValidSubmit.InvokeAsync();
+    }
+}

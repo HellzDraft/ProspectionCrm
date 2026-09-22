@@ -1,0 +1,95 @@
+@page "/opportunities/{Id:guid}/edit"
+@inject OpportunityApiService OpportunityApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Modifier une opportunité</PageTitle>
+<h1>Modifier une opportunité</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (notFound)
+{
+    <p>Opportunité introuvable.</p>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+    }
+    @if (original is not null)
+    {
+        <OpportunityApiForm @key="original.Id" Model="@model" IsEditing="true"
+                            IsSubmitting="@isSubmitting" OnValidSubmit="HandleValidSubmit" />
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private OpportunityApiDto? original;
+    private OpportunityApiFormModel model = new();
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private bool notFound;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        notFound = false;
+        errorMessage = null;
+        original = null;
+        try
+        {
+            original = await OpportunityApiService.GetByIdAsync(Id);
+            notFound = original is null;
+            if (original is not null)
+            {
+                model = new()
+                {
+                    Title = original.Title,
+                    PipelineCode = original.PipelineCode,
+                    StatusCode = original.StatusCode,
+                    PriorityCode = original.PriorityCode,
+                    Location = original.Location
+                };
+            }
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de charger l'opportunité.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || original is null)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            var updated = await OpportunityApiService.UpdateAsync(
+                original.Id, OpportunityApiWriteRequest.FromForm(model, original));
+            if (!updated)
+                notFound = true;
+            else
+                NavigationManager.NavigateTo("/opportunities");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de modifier l'opportunité.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

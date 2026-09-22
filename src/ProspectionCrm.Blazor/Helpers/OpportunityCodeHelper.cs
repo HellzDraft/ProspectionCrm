@@ -4,6 +4,15 @@ namespace ProspectionCrm.Blazor.Helpers;
 
 public static class OpportunityCodeHelper
 {
+    public static string GetPipelineCode(PipelineType pipeline) => pipeline == PipelineType.DotNet
+        ? "dotnet" : ToKebabCase(pipeline.ToString());
+    public static string GetStatusCode(OpportunityStatus status) => ToKebabCase(status.ToString());
+    public static string GetPriorityCode(OpportunityPriority priority) => ToKebabCase(priority.ToString());
+
+    private static string ToKebabCase(string value) =>
+        string.Concat(value.Select((c, i) => char.IsUpper(c) && i > 0
+            ? "-" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
+
     public static PipelineType? GetPipeline(string code) => Match<PipelineType>(code);
     public static OpportunityStatus? GetStatus(string code) => Match<OpportunityStatus>(code);
     public static OpportunityPriority? GetPriority(string code) => Match<OpportunityPriority>(code);
