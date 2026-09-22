@@ -1,6 +1,6 @@
 ﻿@page "/opportunities"
 
-@inject OpportunityService OpportunityService
+@inject OpportunityApiService OpportunityApiService
 
 <PageTitle>Opportunités</PageTitle>
 
@@ -8,9 +8,7 @@
 
 <p>Liste des opportunités de prospection professionnelle.</p>
 
-<NavLink href="/opportunities/create">
-    Ajouter une opportunité
-</NavLink>
+<button disabled title="À venir">Ajouter une opportunité</button>
 
 <div class="view-selector">
     <button @onclick="ShowTableView">
@@ -53,22 +51,24 @@ else if (!filteredOpportunities.Any())
 }
 else
 {
-    @if (isKanbanView)
+    @if (isKanbanView && selectedPipeline is null)
+    {
+        <p>Sélectionnez un pipeline pour afficher le Kanban.</p>
+    }
+    else if (isKanbanView)
     {
         <div class="kanban-board">
             @foreach (var status in kanbanStatuses)
             {
                 <section class="kanban-column">
                     <h2>
-                        @OpportunityDisplayHelper.GetStatusLabel(status)
+                        @OpportunityCodeHelper.GetStatusLabel(status)
                     </h2>
 
                     @foreach (var opportunity in filteredOpportunities.Where(
-                        opportunity => opportunity.Status == status))
+                        opportunity => OpportunityCodeHelper.GetStatusKey(opportunity.StatusCode) == status))
                     {
-                        <OpportunityCard Opportunity="@opportunity"
-                                         AllowStatusChange="true"
-                                         OnStatusChange="@(newStatus => HandleStatusChange(opportunity.Id, newStatus))" />
+                        <OpportunityApiCard Opportunity="@opportunity" />
                     }
                 </section>
             }
@@ -85,7 +85,7 @@ else
                         </button>
                     </th>
                     <th>
-                        <button @onclick='() => SetSort("CompanyName")'>
+                        <button @onclick='() => SetSort("CompanyId")'>
                             Entreprise
                         </button>
                     </th>
@@ -96,7 +96,7 @@ else
                     </th>
                     <th>
                         <button @onclick='() => SetSort("Status")'>
-                            Status
+                            Statut
                         </button>
                     </th>
                     <th>
@@ -118,28 +118,26 @@ else
                 {
                     <tr>
                         <td>@opportunity.Title</td>
-                        <td>@opportunity.CompanyName</td>
+                        <td>@OpportunityCodeHelper.GetCompanyLabel(opportunity.CompanyId)</td>
 
                         <td>
-                            <span class="pipeline-badge @GetPipelineClass(opportunity.Pipeline)">
-                                @OpportunityDisplayHelper.GetPipelineLabel(opportunity.Pipeline)
+                            <span class="pipeline-badge @GetPipelineClass(opportunity.PipelineCode)">
+                                @OpportunityCodeHelper.GetPipelineLabel(opportunity.PipelineCode)
                             </span>
                         </td>
 
-                        <td>@OpportunityDisplayHelper.GetStatusLabel(opportunity.Status)</td>
+                        <td>@OpportunityCodeHelper.GetStatusLabel(opportunity.StatusCode)</td>
 
                         <td>
-                            <span class="priority-badge @GetPriorityClass(opportunity.Priority)">
-                                @OpportunityDisplayHelper.GetPriorityLabel(opportunity.Priority)
+                            <span class="priority-badge @GetPriorityClass(opportunity.PriorityCode)">
+                                @OpportunityCodeHelper.GetPriorityLabel(opportunity.PriorityCode)
                             </span>
                         </td>
 
                         <td>@opportunity.Location</td>
 
                         <td>
-                            <NavLink href="@($"/opportunities/{opportunity.Id}")">
-                                Voir
-                            </NavLink>
+                            <span>À venir</span>
                         </td>
                     </tr>
                 }
@@ -165,7 +163,7 @@ else
 }
 
 @code {
-    private List<OpportunityDto> opportunities = [];
+    private List<OpportunityApiDto> opportunities = [];
 
     private string searchTerm = string.Empty;
 
@@ -177,23 +175,24 @@ else
     private int currentPage = 1;
     private int pageSize = 2;
 
-    private IEnumerable<OpportunityDto> filteredOpportunities =>
+    private IEnumerable<OpportunityApiDto> filteredOpportunities =>
     opportunities.Where(opportunity =>
         (
             opportunity.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
-            || opportunity.CompanyName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+            || (opportunity.Location?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (opportunity.SourceName?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
         )
         &&
         (
             selectedPipeline is null
-            || opportunity.Pipeline == selectedPipeline.Value
+            || OpportunityCodeHelper.GetPipeline(opportunity.PipelineCode) == selectedPipeline.Value
         ));
 
     
 
-    private string GetPriorityClass(OpportunityPriority priority)
+    private string GetPriorityClass(string code)
     {
-        return priority switch
+        return OpportunityCodeHelper.GetPriority(code) switch
         {
             OpportunityPriority.Low => "priority-low",
             OpportunityPriority.Normal => "priority-normal",
@@ -202,9 +201,9 @@ else
         };
     }
 
-    private string GetPipelineClass(PipelineType pipeline)
+    private string GetPipelineClass(string code)
     {
-        return pipeline switch
+        return OpportunityCodeHelper.GetPipeline(code) switch
         {
             PipelineType.DotNet => "pipeline-dotnet",
             PipelineType.MaltFreelance => "pipeline-malt",
@@ -222,7 +221,7 @@ else
     {
         try
         {
-            opportunities = await OpportunityService.GetAllAsync();
+            opportunities = await OpportunityApiService.GetAllAsync();
         }
         catch (Exception)
         {
@@ -245,38 +244,28 @@ else
     {
         isKanbanView = true;
     }
-    private async Task HandleStatusChange(
-    int opportunityId,
-    OpportunityStatus newStatus)
-    {
-        await OpportunityService.UpdateStatusAsync(
-            opportunityId,
-            newStatus);
-    }
+    private IEnumerable<string> kanbanStatuses =>
+        filteredOpportunities.Select(opportunity => OpportunityCodeHelper.GetStatusKey(opportunity.StatusCode))
+            .Distinct().OrderBy(OpportunityCodeHelper.GetStatusLabel);
 
-    private IReadOnlyList<OpportunityStatus> kanbanStatuses =>
-        selectedPipeline is null
-            ? []
-            : OpportunityWorkflow.GetAllowedStatuses(selectedPipeline.Value);
-
-    private IEnumerable<OpportunityDto> sortedOpportunities
+    private IEnumerable<OpportunityApiDto> sortedOpportunities
     {
         get
         {
             var sorted = sortColumn switch
             {
-                "CompanyName" => filteredOpportunities.OrderBy(opportunity => opportunity.CompanyName),
-                "Pipeline" => filteredOpportunities.OrderBy(opportunity => opportunity.Pipeline),
-                "Status" => filteredOpportunities.OrderBy(opportunity => opportunity.Status),
-                "Priority" => filteredOpportunities.OrderBy(opportunity => opportunity.Priority),
+                "CompanyId" => filteredOpportunities.OrderBy(opportunity => opportunity.CompanyId),
+                "Pipeline" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetPipelineLabel(opportunity.PipelineCode)),
+                "Status" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetStatusLabel(opportunity.StatusCode)),
+                "Priority" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetPriorityLabel(opportunity.PriorityCode)),
                 "Location" => filteredOpportunities.OrderBy(opportunity => opportunity.Location),
 
                 _ => filteredOpportunities.OrderBy(opportunity => opportunity.Title)
             };
 
             return sortAscending
-                ? sorted
-                : sorted.Reverse();
+                ? sorted.ThenBy(opportunity => opportunity.Id)
+                : sorted.ThenBy(opportunity => opportunity.Id).Reverse();
         }
     }
     private void SetSort(string column)
@@ -297,7 +286,7 @@ else
     (int)Math.Ceiling(
         sortedOpportunities.Count() / (double)pageSize);
 
-    private IEnumerable<OpportunityDto> pagedOpportunities =>
+    private IEnumerable<OpportunityApiDto> pagedOpportunities =>
 sortedOpportunities
     .Skip((currentPage - 1) * pageSize)
     .Take(pageSize);

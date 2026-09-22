@@ -1,0 +1,13 @@
+<div class="opportunity-card">
+    <h2>@Opportunity.Title</h2>
+    <p>Entreprise : @OpportunityCodeHelper.GetCompanyLabel(Opportunity.CompanyId)</p>
+    <p>Pipeline : @OpportunityCodeHelper.GetPipelineLabel(Opportunity.PipelineCode)</p>
+    <p>Statut : @OpportunityCodeHelper.GetStatusLabel(Opportunity.StatusCode)</p>
+    <p>Priorité : @OpportunityCodeHelper.GetPriorityLabel(Opportunity.PriorityCode)</p>
+    <p>Localisation : @Opportunity.Location</p>
+</div>
+
+@code {
+    [Parameter]
+    public OpportunityApiDto Opportunity { get; set; } = default!;
+}

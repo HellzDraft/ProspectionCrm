@@ -16,6 +16,15 @@ builder.Services.AddScoped<IContactService, ContactService>();
 builder.Services.AddScoped<ICrmTaskService, CrmTaskService>();
 builder.Services.AddOpenApi();
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddCors(options =>
+        options.AddPolicy("BlazorDevelopment", policy =>
+            policy.WithOrigins("http://localhost:5054", "https://localhost:7075")
+                .WithMethods("GET")
+                .AllowAnyHeader()));
+}
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -24,6 +33,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("BlazorDevelopment");
+}
 
 app.UseAuthorization();
 
