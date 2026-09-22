@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="../src/ProspectionCrm.Api/ProspectionCrm.Api.csproj" />
-  <Project Path="../src/ProspectionCrm.Blazor/ProspectionCrm.Blazor.csproj" />
-</Solution>
