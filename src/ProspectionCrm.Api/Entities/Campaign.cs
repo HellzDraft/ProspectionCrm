@@ -1,18 +1,20 @@
 namespace ProspectionCrm.Api.Entities;
 
-public class Pipeline
+public class Campaign
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid WorkspaceId { get; set; }
+    public Guid? PipelineId { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
-    public required string TypeCode { get; set; }
+    public required string StatusCode { get; set; }
+    public DateTimeOffset? StartsAt { get; set; }
+    public DateTimeOffset? EndsAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
 
     public Workspace Workspace { get; set; } = null!;
-    public ICollection<PipelineStage> Stages { get; set; } = new List<PipelineStage>();
-    public ICollection<SavedSearch> SavedSearches { get; set; } = new List<SavedSearch>();
-    public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
+    public Pipeline? Pipeline { get; set; }
+    public ICollection<CampaignOpportunity> CampaignOpportunities { get; set; } = new List<CampaignOpportunity>();
 }

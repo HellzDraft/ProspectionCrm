@@ -15,4 +15,8 @@ public class Workspace
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
     public ICollection<Pipeline> Pipelines { get; set; } = new List<Pipeline>();
     public ICollection<Opportunity> Opportunities { get; set; } = new List<Opportunity>();
+    public ICollection<SourceConfiguration> SourceConfigurations { get; set; } = new List<SourceConfiguration>();
+    public ICollection<SavedSearch> SavedSearches { get; set; } = new List<SavedSearch>();
+    public ICollection<SourceExecution> SourceExecutions { get; set; } = new List<SourceExecution>();
+    public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
 }

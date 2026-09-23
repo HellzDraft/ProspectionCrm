@@ -15,6 +15,13 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<Opportunity> Opportunities => Set<Opportunity>();
     public DbSet<CrmTask> CrmTasks => Set<CrmTask>();
 
+    public DbSet<SourceConfiguration> SourceConfigurations => Set<SourceConfiguration>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<SourceExecution> SourceExecutions => Set<SourceExecution>();
+    public DbSet<OpportunitySource> OpportunitySources => Set<OpportunitySource>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignOpportunity> CampaignOpportunities => Set<CampaignOpportunity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ProspectionCrmDbContext).Assembly);
 }

@@ -22,4 +22,6 @@ public class Opportunity
     public Company? Company { get; set; }
     public Contact? Contact { get; set; }
     public ICollection<CrmTask> CrmTasks { get; set; } = new List<CrmTask>();
+    public ICollection<OpportunitySource> OpportunitySources { get; set; } = new List<OpportunitySource>();
+    public ICollection<CampaignOpportunity> CampaignOpportunities { get; set; } = new List<CampaignOpportunity>();
 }

@@ -16,6 +16,11 @@ builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IContactService, ContactService>();
 builder.Services.AddScoped<ICrmTaskService, CrmTaskService>();
+builder.Services.AddScoped<ISourceConfigurationService, SourceConfigurationService>();
+builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
+builder.Services.AddScoped<ISourceExecutionService, SourceExecutionService>();
+builder.Services.AddScoped<IOpportunitySourceService, OpportunitySourceService>();
+builder.Services.AddScoped<ICampaignService, CampaignService>();
 builder.Services.AddOpenApi();
 
 if (builder.Environment.IsDevelopment())
