@@ -17,7 +17,7 @@ builder.Services.AddScoped<CompanyApiService>();
 
 builder.Services.AddScoped<ContactApiService>();
 
-builder.Services.AddSingleton<FollowUpActionService>();
+builder.Services.AddScoped<CrmTaskApiService>();
 
 builder.Services.AddSingleton<DocumentReferenceService>();
 

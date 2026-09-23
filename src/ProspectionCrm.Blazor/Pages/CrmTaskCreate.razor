@@ -1,0 +1,104 @@
+@page "/actions/create"
+@inject CrmTaskApiService CrmTaskApiService
+@inject OpportunityApiService OpportunityApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nouvelle relance</PageTitle>
+<h1>Nouvelle relance</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
+else if (opportunities.Count == 0)
+{
+    <p>Aucune opportunité disponible. Créez d'abord une opportunité.</p>
+    <NavLink href="/opportunities/create">Créer une opportunité</NavLink>
+    <button @onclick="RefreshOpportunitiesAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+        <button disabled="@isSubmitting" @onclick="RefreshOpportunitiesAsync">Recharger les opportunités</button>
+    }
+    <CrmTaskApiForm Model="@model" IsSubmitting="@isSubmitting" Opportunities="@opportunities"
+                    SubmitText="Créer la relance" OnValidSubmit="HandleValidSubmit" />
+}
+
+@code {
+    private CrmTaskApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private string? loadErrorMessage;
+    private List<OpportunityApiDto> opportunities = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        errorMessage = null;
+        try
+        {
+            opportunities = await OpportunityApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les opportunités.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshOpportunitiesAsync()
+    {
+        if (isSubmitting)
+            return;
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            opportunities = await OpportunityApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les opportunités.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || isLoading || loadErrorMessage is not null)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await CrmTaskApiService.CreateAsync(CrmTaskApiWriteRequest.FromForm(model));
+            NavigationManager.NavigateTo("/actions?notice=created");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de créer la relance.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

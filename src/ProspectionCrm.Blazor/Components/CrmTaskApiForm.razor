@@ -1,0 +1,52 @@
+<EditForm Model="@Model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <fieldset disabled="@IsSubmitting">
+        <div>
+            <label for="task-opportunity">Opportunité</label>
+            <InputSelect id="task-opportunity" @bind-Value="Model.OpportunityId">
+                <option value="">Sélectionner une opportunité</option>
+                @if (Model.OpportunityId is { } selectedId && !Opportunities.Any(item => item.Id == selectedId))
+                {
+                    <option value="@selectedId" disabled>Opportunité indisponible</option>
+                }
+                @foreach (var opportunity in Opportunities.OrderBy(item => item.Title))
+                {
+                    <option value="@opportunity.Id">@opportunity.Title</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.OpportunityId)" />
+        </div>
+        <div>
+            <label for="task-title">Titre</label>
+            <InputText id="task-title" @bind-Value="Model.Title" />
+            <ValidationMessage For="@(() => Model.Title)" />
+        </div>
+        <div>
+            <label for="task-description">Description</label>
+            <InputTextArea id="task-description" @bind-Value="Model.Description" />
+            <ValidationMessage For="@(() => Model.Description)" />
+        </div>
+        <div>
+            <label for="task-due">Échéance (heure locale)</label>
+            <InputDate id="task-due" Type="InputDateType.DateTimeLocal" @bind-Value="Model.DueAtLocal"
+                       ParsingErrorMessage="L'échéance doit être une date et une heure valides." />
+            <ValidationMessage For="@(() => Model.DueAtLocal)" />
+        </div>
+        <button type="submit" disabled="@IsSubmitting">@SubmitText</button>
+    </fieldset>
+</EditForm>
+
+@code {
+    [Parameter] public CrmTaskApiFormModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<OpportunityApiDto> Opportunities { get; set; } = [];
+    [Parameter] public string SubmitText { get; set; } = "Enregistrer";
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+
+    private async Task HandleValidSubmit()
+    {
+        if (!IsSubmitting)
+            await OnValidSubmit.InvokeAsync();
+    }
+}

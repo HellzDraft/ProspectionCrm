@@ -1,6 +1,7 @@
 ﻿@page "/"
 
-@inject FollowUpActionService FollowUpActionService
+@inject CrmTaskApiService CrmTaskApiService
+@inject OpportunityApiService OpportunityApiService
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -43,81 +44,53 @@
     </div>
 </section>
 
-<section>
-    <h2>Prochaines actions</h2>
-
-    @if (!nextActions.Any())
+<section aria-label="Relances à traiter">
+    <h2>Relances à traiter</h2>
+    @if (isLoadingRelances)
     {
-        <p>Aucune action à traiter.</p>
+        <p>Chargement des relances...</p>
+    }
+    else if (relancesError is not null)
+    {
+        <p role="alert">@relancesError</p>
+        <button @onclick="LoadRelancesAsync">Réessayer</button>
     }
     else
     {
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Action</th>
-                    <th>Échéance</th>
-                    <th>Opportunité</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                @foreach (var action in nextActions)
-                {
-                    <tr>
-                        <td>
-                            <strong>@action.Title</strong>
-                        </td>
-
-                        <td>
-                            @action.DueDate.ToString("dd/MM/yyyy")
-                        </td>
-
-                        <td>
-                            @if (action.OpportunityId is not null)
-                            {
-                                <NavLink href="@($"/opportunities/{action.OpportunityId}")">
-                                    @action.OpportunityTitle
-                                </NavLink>
-                            }
-                            else
-                            {
-                                <span>Aucune</span>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <DashboardStatCard Title="Relances à traiter" Value="@dueTasks.Count" />
+        @if (dueTasks.Count == 0)
+        {
+            <p>Aucune relance à traiter.</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead><tr><th>Relance</th><th>Échéance</th><th>Opportunité</th></tr></thead>
+                <tbody>
+                    @foreach (var task in dueTasks.Take(5))
+                    {
+                        <tr>
+                            <td>@task.Title</td>
+                            <td>@(task.DueAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                            <td>@opportunityTitles.GetValueOrDefault(task.OpportunityId, "Opportunité indisponible")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
     }
+    <NavLink href="/actions">Voir les actions / relances</NavLink>
 </section>
 
 @code {
     private int activeOpportunities = 24;
 
-    private List<FollowUpActionDto> followUpActions = [];
-
-    private int todayActionsCount =>
-    followUpActions.Count(action =>
-        FollowUpActionHelper.IsDueToday(action));
-
-    private int upcomingActionsCount =>
-        followUpActions.Count(action =>
-            !action.IsCompleted
-            && !FollowUpActionHelper.IsOverdue(action)
-            && !FollowUpActionHelper.IsDueToday(action));
+    private List<CrmTaskApiDto> dueTasks = [];
+    private Dictionary<Guid, string> opportunityTitles = [];
+    private bool isLoadingRelances = true;
+    private string? relancesError;
 
     private record DashboardStat(string Title, int Value);
-
-    private int overdueActionsCount =>
-   followUpActions.Count(action =>
-       FollowUpActionHelper.IsOverdue(action));
-
-    private IEnumerable<FollowUpActionDto> nextActions =>
-    followUpActions
-        .Where(action => !action.IsCompleted)
-        .OrderBy(action => action.DueDate)
-        .Take(5);
 
     private List<DashboardStat> pipelineStats =
     [
@@ -129,10 +102,7 @@
 
     private List<DashboardStat> summaryStats =>
 [
-    new("Opportunités actives", activeOpportunities),
-    new("Relances en retard", overdueActionsCount),
-    new("Actions aujourd'hui", todayActionsCount),
-    new("Actions à venir", upcomingActionsCount)
+    new("Opportunités actives", activeOpportunities)
 ];
 
     private void AddOpportunity()
@@ -147,8 +117,37 @@
         activeOpportunities--;
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => LoadRelancesAsync();
+
+    private async Task LoadRelancesAsync()
     {
-        followUpActions = await FollowUpActionService.GetAllAsync();
+        isLoadingRelances = true;
+        relancesError = null;
+        try
+        {
+            dueTasks = await CrmTaskApiService.GetDueAsync();
+            opportunityTitles = [];
+            if (dueTasks.Count > 0)
+            {
+                try
+                {
+                    opportunityTitles = (await OpportunityApiService.GetAllAsync())
+                        .ToDictionary(item => item.Id, item => item.Title);
+                }
+                catch (Exception)
+                {
+                    // The due count remains usable even if opportunity titles are unavailable.
+                    opportunityTitles = [];
+                }
+            }
+        }
+        catch (Exception)
+        {
+            relancesError = "Impossible de charger les relances.";
+        }
+        finally
+        {
+            isLoadingRelances = false;
+        }
     }
 }

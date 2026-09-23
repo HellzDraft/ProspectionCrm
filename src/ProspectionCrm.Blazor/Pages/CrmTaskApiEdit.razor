@@ -1,0 +1,127 @@
+@page "/actions/{Id:guid}/edit"
+@inject CrmTaskApiService CrmTaskApiService
+@inject OpportunityApiService OpportunityApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Modifier une relance</PageTitle>
+<h1>Modifier une relance</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (notFound)
+{
+    <p>Relance introuvable.</p>
+}
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
+else if (opportunities.Count == 0)
+{
+    <p>Aucune opportunité disponible. Créez d'abord une opportunité.</p>
+    <NavLink href="/opportunities/create">Créer une opportunité</NavLink>
+    <button @onclick="RefreshOpportunitiesAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+        <button disabled="@isSubmitting" @onclick="RefreshOpportunitiesAsync">Recharger les opportunités</button>
+    }
+    <CrmTaskApiForm Model="@model" IsSubmitting="@isSubmitting" Opportunities="@opportunities"
+                    SubmitText="Enregistrer" OnValidSubmit="HandleValidSubmit" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private CrmTaskApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private string? loadErrorMessage;
+    private bool notFound;
+    private List<OpportunityApiDto> opportunities = [];
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        errorMessage = null;
+        notFound = false;
+        try
+        {
+            var item = await CrmTaskApiService.GetByIdAsync(Id);
+            if (item is null)
+            {
+                notFound = true;
+                return;
+            }
+            opportunities = await OpportunityApiService.GetAllAsync();
+            model = new()
+            {
+                OpportunityId = item.OpportunityId,
+                Title = item.Title,
+                Description = item.Description,
+                DueAtLocal = item.DueAt?.ToLocalTime().DateTime
+            };
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger la relance et les opportunités.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshOpportunitiesAsync()
+    {
+        if (isSubmitting)
+            return;
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            opportunities = await OpportunityApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les opportunités.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || notFound || isLoading || loadErrorMessage is not null)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            var updated = await CrmTaskApiService.UpdateAsync(Id, CrmTaskApiWriteRequest.FromForm(model));
+            if (!updated)
+                notFound = true;
+            else
+                NavigationManager.NavigateTo("/actions?notice=updated");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de modifier la relance.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

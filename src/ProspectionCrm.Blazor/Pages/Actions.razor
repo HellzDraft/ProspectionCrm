@@ -1,122 +1,154 @@
 @page "/actions"
+@inject CrmTaskApiService CrmTaskApiService
+@inject OpportunityApiService OpportunityApiService
 
-@inject FollowUpActionService FollowUpActionService
+<PageTitle>Actions / Relances</PageTitle>
+<h1>Actions / Relances</h1>
+<NavLink href="/actions/create">Ajouter une relance</NavLink>
 
-<PageTitle>Actions</PageTitle>
+@if (successMessage is not null)
+{
+    <p role="status">@successMessage</p>
+}
+@if (operationErrorMessage is not null)
+{
+    <p role="alert">@operationErrorMessage</p>
+}
+@if (pendingDeletion is not null)
+{
+    <section aria-label="Confirmation de suppression">
+        <p>Supprimer définitivement la relance « @pendingDeletion.Title » ?</p>
+        <button disabled="@(isOperating || isLoading)" @onclick="ConfirmDeleteAsync">Confirmer la suppression</button>
+        <button disabled="@isOperating" @onclick="CancelDelete">Annuler</button>
+    </section>
+}
+@if (isOperating)
+{
+    <p role="status">Opération en cours...</p>
+}
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+    <button disabled="@(isOperating || isLoading)" @onclick="LoadAsync">Réessayer</button>
+}
 
-<NavLink href="/actions/create">
-    Ajouter une action
-</NavLink>
-
-<h1>Actions</h1>
-
-<p>Liste des actions.</p>
+<div class="action-filters" aria-label="Filtrer les relances">
+    @foreach (var filter in Enum.GetValues<TaskFilter>())
+    {
+        <button class="@(selectedFilter == filter ? "filter-button active" : "filter-button")"
+                aria-pressed="@(selectedFilter == filter ? "true" : "false")"
+                @onclick="() => selectedFilter = filter">@GetFilterLabel(filter)</button>
+    }
+</div>
 
 @if (isLoading)
 {
-    <p>Chargement des actions...</p>
+    <p>Chargement des relances...</p>
 }
-else if (errorMessage is not null)
+else if (hasLoaded)
 {
-    <p>@errorMessage</p>
-}
-else if (!actions.Any())
-{
-    <p>Aucune action enregistrée.</p>
-}
-else
-{
-    <div class="action-filters">
-        <button class="@GetFilterButtonClass(ActionFilterStatus.All)"
-            @onclick="() => selectedStatus = ActionFilterStatus.All">
-            Toutes
-        </button>
-
-        <button class="@GetFilterButtonClass(ActionFilterStatus.Overdue)"
-            @onclick="() => selectedStatus = ActionFilterStatus.Overdue">
-            En retard
-        </button>
-
-        <button class="@GetFilterButtonClass(ActionFilterStatus.Today)"
-            @onclick="() => selectedStatus = ActionFilterStatus.Today">
-            Aujourd'hui
-        </button>
-
-        <button class="@GetFilterButtonClass(ActionFilterStatus.Upcoming)"
-            @onclick="() => selectedStatus = ActionFilterStatus.Upcoming">
-            À venir
-        </button>
-
-        <button class="@GetFilterButtonClass(ActionFilterStatus.Completed)"
-            @onclick="() => selectedStatus = ActionFilterStatus.Completed">
-            Terminées
-        </button>
-    </div>
-    
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Action</th>
-                <th>Échéance</th>
-                <th>Opportunité</th>
-                <th>Statut</th>
-                <th>Note</th>
-                <th>Terminée</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            @foreach (var action in filteredActions)
-            {
+    @if (!filteredTasks.Any())
+    {
+        <p>Aucune relance ne correspond aux critères.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
                 <tr>
-                    <td>@action.Title</td>
-                    <td>@action.DueDate.ToString("dd/MM/yyyy")</td>
-                    <td>
-                        @if (action.OpportunityId is not null)
-                        {
-                            <span>@action.OpportunityTitle</span>
-                        }
-                        else
-                        {
-                            <span>Aucune</span>
-                        }
-                    </td>
-                    <td>
-                        <span class="action-status @GetStatusClass(action)">
-                            @GetStatusLabel(action)
-                        </span>
-                    </td>
-                    <td>@action.Notes</td>
-                    <td>
-                        <input type="checkbox"
-                               @bind="action.IsCompleted"
-                               @bind:after="() => HandleCompletionChanged(action)" />
-                    </td>
+                    <th>Titre</th>
+                    <th>Opportunité</th>
+                    <th>Échéance</th>
+                    <th>Statut</th>
+                    <th>Description</th>
+                    <th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var task in filteredTasks)
+                {
+                    <tr>
+                        <td>@task.Title</td>
+                        <td>@opportunityTitles.GetValueOrDefault(task.OpportunityId, "Opportunité indisponible")</td>
+                        <td>@(task.DueAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                        <td><span class="action-status @GetStatusClass(task)">@GetStatusLabel(task)</span></td>
+                        <td>@task.Description</td>
+                        <td>
+                            @if (isOperating || pendingDeletion is not null)
+                            {
+                                <span aria-disabled="true">Modifier</span>
+                            }
+                            else
+                            {
+                                <NavLink href="@($"/actions/{task.Id}/edit")">Modifier</NavLink>
+                            }
+                            @if (task.IsCompleted)
+                            {
+                                <button disabled="@(isOperating || pendingDeletion is not null)"
+                                        @onclick="() => RunOperationAsync(task.Id, TaskOperation.Reopen)">Rouvrir</button>
+                            }
+                            else
+                            {
+                                <button disabled="@(isOperating || pendingDeletion is not null)"
+                                        @onclick="() => RunOperationAsync(task.Id, TaskOperation.Complete)">Terminer</button>
+                            }
+                            <button disabled="@(isOperating || pendingDeletion is not null)"
+                                    @onclick="() => RequestDelete(task)">Supprimer</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
 @code {
-
-    private List<FollowUpActionDto> actions = [];
-
+    private List<CrmTaskApiDto> tasks = [];
+    private Dictionary<Guid, string> opportunityTitles = [];
+    private CrmTaskApiDto? pendingDeletion;
     private bool isLoading = true;
-
+    private bool hasLoaded;
+    private bool isOperating;
     private string? errorMessage;
+    private string? operationErrorMessage;
+    private string? successMessage;
+    private TaskFilter selectedFilter = TaskFilter.All;
 
-    private ActionFilterStatus selectedStatus = ActionFilterStatus.All;
+    private enum TaskFilter { All, Overdue, Upcoming, Completed, Undated }
+    private enum TaskOperation { Delete, Complete, Reopen }
 
-    protected override async Task OnInitializedAsync()
+    [SupplyParameterFromQuery(Name = "notice")]
+    public string? Notice { get; set; }
+
+    protected override void OnParametersSet()
     {
+        successMessage = Notice switch
+        {
+            "created" => "Relance créée.",
+            "updated" => "Relance modifiée.",
+            _ => null
+        };
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
         try
         {
-            actions = await FollowUpActionService.GetAllAsync();
+            var tasksRequest = CrmTaskApiService.GetAllAsync();
+            var opportunitiesRequest = OpportunityApiService.GetAllAsync();
+            await Task.WhenAll(tasksRequest, opportunitiesRequest);
+            var titles = (await opportunitiesRequest).ToDictionary(item => item.Id, item => item.Title);
+            tasks = await tasksRequest;
+            opportunityTitles = titles;
+            hasLoaded = true;
         }
         catch (Exception)
         {
-            errorMessage = "Impossible de charger les actions.";
+            errorMessage = "Impossible de charger les relances et leurs opportunités.";
         }
         finally
         {
@@ -124,77 +156,94 @@ else
         }
     }
 
-    private string GetStatusClass(FollowUpActionDto action)
+    private static TaskFilter GetStatus(CrmTaskApiDto task) => task.IsCompleted
+        ? TaskFilter.Completed
+        : task.DueAt is null ? TaskFilter.Undated
+        : task.DueAt < DateTimeOffset.UtcNow ? TaskFilter.Overdue : TaskFilter.Upcoming;
+
+    private static string GetFilterLabel(TaskFilter filter) => filter switch
     {
-        if (action.IsCompleted)
-        {
-            return "status-completed";
-        }
-
-        if (FollowUpActionHelper.IsOverdue(action))
-        {
-            return "status-overdue";
-        }
-
-        if (FollowUpActionHelper.IsOverdue(action))
-        {
-            return "status-today";
-        }
-
-        return "status-upcoming";
-    }
-
-    private string GetStatusLabel(FollowUpActionDto action)
-    {
-        if (action.IsCompleted)
-        {
-            return "Terminée";
-        }
-
-        if (FollowUpActionHelper.IsOverdue(action))
-        {
-            return "En retard";
-        }
-
-        if (FollowUpActionHelper.IsDueToday(action))
-        {
-            return "Aujourd'hui";
-        }
-
-        return "À venir";
-    }
-
-    private async Task HandleCompletionChanged(FollowUpActionDto action)
-    {
-        await FollowUpActionService.UpdateCompletionAsync(
-            action.Id,
-            action.IsCompleted);
-    }
-
-    private IEnumerable<FollowUpActionDto> filteredActions =>
-    selectedStatus switch
-    {
-        ActionFilterStatus.Overdue => actions.Where(action =>
-            FollowUpActionHelper.IsOverdue(action)),
-
-        ActionFilterStatus.Today => actions.Where(action =>
-            FollowUpActionHelper.IsDueToday(action)),
-
-        ActionFilterStatus.Upcoming => actions.Where(action =>
-            !action.IsCompleted
-            && !FollowUpActionHelper.IsOverdue(action)
-            && !FollowUpActionHelper.IsDueToday(action)),
-
-        ActionFilterStatus.Completed => actions.Where(action =>
-            action.IsCompleted),
-
-        _ => actions
+        TaskFilter.Overdue => "En retard",
+        TaskFilter.Upcoming => "À venir",
+        TaskFilter.Completed => "Terminées",
+        TaskFilter.Undated => "Sans échéance",
+        _ => "Toutes"
     };
 
-    private string GetFilterButtonClass(ActionFilterStatus status)
+    private static string GetStatusLabel(CrmTaskApiDto task) => task.IsCompleted
+        ? "Terminée" : GetFilterLabel(GetStatus(task));
+
+    private static string GetStatusClass(CrmTaskApiDto task) => GetStatus(task) switch
     {
-        return selectedStatus == status
-            ? "filter-button active"
-            : "filter-button";
+        TaskFilter.Completed => "status-completed",
+        TaskFilter.Overdue => "status-overdue",
+        TaskFilter.Upcoming => "status-upcoming",
+        _ => "status-undated"
+    };
+
+    private IEnumerable<CrmTaskApiDto> filteredTasks => selectedFilter == TaskFilter.All
+        ? tasks : tasks.Where(task => GetStatus(task) == selectedFilter);
+
+    private void RequestDelete(CrmTaskApiDto task)
+    {
+        if (isOperating || isLoading)
+            return;
+        pendingDeletion = task;
+        operationErrorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (!isOperating)
+        {
+            pendingDeletion = null;
+            operationErrorMessage = null;
+        }
+    }
+
+    private Task ConfirmDeleteAsync() => pendingDeletion is null
+        ? Task.CompletedTask : RunOperationAsync(pendingDeletion.Id, TaskOperation.Delete);
+
+    private async Task RunOperationAsync(Guid id, TaskOperation operation)
+    {
+        if (isOperating || isLoading)
+            return;
+        isOperating = true;
+        operationErrorMessage = null;
+        successMessage = null;
+        try
+        {
+            var found = operation switch
+            {
+                TaskOperation.Delete => await CrmTaskApiService.DeleteAsync(id),
+                TaskOperation.Complete => await CrmTaskApiService.CompleteAsync(id),
+                _ => await CrmTaskApiService.ReopenAsync(id)
+            };
+            pendingDeletion = null;
+            await LoadAsync();
+            if (!found)
+                operationErrorMessage = "Cette relance n'existe plus.";
+            else
+                successMessage = operation switch
+                {
+                    TaskOperation.Delete => "Relance supprimée.",
+                    TaskOperation.Complete => "Relance terminée.",
+                    _ => "Relance rouverte."
+                };
+        }
+        catch (Exception)
+        {
+            operationErrorMessage = operation switch
+            {
+                TaskOperation.Delete => "Impossible de supprimer la relance.",
+                TaskOperation.Complete => "Impossible de terminer la relance.",
+                _ => "Impossible de rouvrir la relance."
+            };
+        }
+        finally
+        {
+            isOperating = false;
+        }
     }
 }
