@@ -1,4 +1,4 @@
-﻿@page "/actions"
+@page "/actions"
 
 @inject FollowUpActionService FollowUpActionService
 
@@ -74,9 +74,7 @@ else
                     <td>
                         @if (action.OpportunityId is not null)
                         {
-                            <NavLink href="@($"/opportunities/{action.OpportunityId}")">
-                                @action.OpportunityTitle
-                            </NavLink>
+                            <span>@action.OpportunityTitle</span>
                         }
                         else
                         {

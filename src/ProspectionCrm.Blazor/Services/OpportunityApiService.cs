@@ -6,6 +6,15 @@ namespace ProspectionCrm.Blazor.Services;
 
 public class OpportunityApiService(HttpClient httpClient)
 {
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.DeleteAsync($"api/opportunities/{id}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public async Task<List<OpportunityApiDto>> GetAllAsync(CancellationToken cancellationToken = default)
         => await httpClient.GetFromJsonAsync<List<OpportunityApiDto>>(
             "api/opportunities", cancellationToken) ?? [];

@@ -12,7 +12,6 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 builder.Services.AddScoped<OpportunityApiService>();
 
-builder.Services.AddSingleton<OpportunityService>();
 
 builder.Services.AddSingleton<CompanyService>();
 

@@ -1,7 +1,6 @@
-﻿@page "/companies/{Id:int}"
+@page "/companies/{Id:int}"
 
 @inject CompanyService CompanyService
-@inject OpportunityService OpportunityService
 @inject ContactService ContactService
 
 <PageTitle>Détail de l'entreprise</PageTitle>
@@ -52,25 +51,6 @@ else
         }
     }
 
-    <h2>Opportunités associées</h2>
-
-    @if (!opportunities.Any())
-    {
-        <p>Aucune opportunité associée à cette entreprise.</p>
-    }
-    else
-    {
-        @foreach (var opportunity in opportunities)
-        {
-            <div>
-                <OpportunityCard Opportunity="@opportunity" />
-
-                <NavLink href="@($"/opportunities/{opportunity.Id}")">
-                    Voir
-                </NavLink>
-            </div>
-        }
-    }
 }
 
 @code
@@ -80,7 +60,6 @@ else
 
     private CompanyDto? company;
 
-    private List<OpportunityDto> opportunities = [];
 
     private List<ContactDto> contacts = [];
 
@@ -96,7 +75,6 @@ else
 
             if (company is not null)
             {
-                opportunities = await OpportunityService.GetByCompanyIdAsync(Id);
                 contacts = await ContactService.GetByCompanyIdAsync(Id);
             }
         }

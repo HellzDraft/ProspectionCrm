@@ -21,7 +21,7 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(options =>
         options.AddPolicy("BlazorDevelopment", policy =>
             policy.WithOrigins("http://localhost:5054", "https://localhost:7075")
-                .WithMethods("GET", "POST", "PUT")
+                .WithMethods("GET", "POST", "PUT", "DELETE")
                 .AllowAnyHeader()));
 }
 

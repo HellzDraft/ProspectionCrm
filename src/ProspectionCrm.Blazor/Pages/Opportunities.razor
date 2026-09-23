@@ -10,6 +10,33 @@
 
 <NavLink href="/opportunities/create">Ajouter une opportunité</NavLink>
 
+@if (successMessage is not null)
+{
+    <p role="status">@successMessage</p>
+}
+@if (operationErrorMessage is not null)
+{
+    <p role="alert">@operationErrorMessage</p>
+}
+@if (pendingDeletion is not null)
+{
+    <section aria-label="Confirmation de suppression">
+        <p>Supprimer définitivement l'opportunité « @pendingDeletion.Title » ?
+            Les tâches et relances associées (CrmTask) seront également supprimées par cascade.</p>
+        <button disabled="@isDeleting" @onclick="ConfirmDeleteAsync">Confirmer la suppression</button>
+        <button disabled="@isDeleting" @onclick="CancelDelete">Annuler</button>
+        @if (isDeleting)
+        {
+            <p role="status">Suppression en cours...</p>
+        }
+    </section>
+}
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+    <button disabled="@(isLoading || isDeleting)" @onclick="RetryLoadAsync">Réessayer</button>
+}
+
 <div class="view-selector">
     <button @onclick="ShowTableView">
         Tableau
@@ -41,9 +68,8 @@
 {
     <p>Chargement des opportunités...</p>
 }
-else if (errorMessage is not null)
+else if (errorMessage is not null && !hasLoaded)
 {
-    <p>@errorMessage</p>
 }
 else if (!filteredOpportunities.Any())
 {
@@ -138,6 +164,7 @@ else
 
                         <td>
                             <NavLink href="@($"/opportunities/{opportunity.Id}/edit")">Modifier</NavLink>
+                            <button disabled="@(isDeleting || isLoading)" @onclick="() => RequestDelete(opportunity)">Supprimer</button>
                         </td>
                     </tr>
                 }
@@ -216,12 +243,38 @@ else
     private bool isLoading = true;
 
     private string? errorMessage;
+    private string? operationErrorMessage;
+    private string? successMessage;
+    private OpportunityApiDto? pendingDeletion;
+    private bool isDeleting;
+    private bool hasLoaded;
 
-    protected override async Task OnInitializedAsync()
+    [SupplyParameterFromQuery(Name = "notice")]
+    public string? Notice { get; set; }
+
+    protected override void OnParametersSet()
     {
+        successMessage = Notice switch
+        {
+            "created" => "Opportunité créée.",
+            "updated" => "Opportunité modifiée.",
+            _ => null
+        };
+    }
+
+    protected override Task OnInitializedAsync() => LoadOpportunitiesAsync();
+
+    private Task RetryLoadAsync() => LoadOpportunitiesAsync();
+
+    private async Task LoadOpportunitiesAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
         try
         {
             opportunities = await OpportunityApiService.GetAllAsync();
+            hasLoaded = true;
+            currentPage = Math.Clamp(currentPage, 1, Math.Max(1, totalPages));
         }
         catch (Exception)
         {
@@ -230,6 +283,52 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private void RequestDelete(OpportunityApiDto opportunity)
+    {
+        if (isDeleting)
+            return;
+        pendingDeletion = opportunity;
+        operationErrorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (!isDeleting)
+        {
+            pendingDeletion = null;
+            operationErrorMessage = null;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (isDeleting || pendingDeletion is null)
+            return;
+
+        isDeleting = true;
+        operationErrorMessage = null;
+        successMessage = null;
+        try
+        {
+            var deleted = await OpportunityApiService.DeleteAsync(pendingDeletion.Id);
+            pendingDeletion = null;
+            await LoadOpportunitiesAsync();
+            if (deleted)
+                successMessage = "Opportunité supprimée.";
+            else
+                operationErrorMessage = "Cette opportunité n'existe plus.";
+        }
+        catch (Exception)
+        {
+            operationErrorMessage = "Impossible de supprimer l'opportunité.";
+        }
+        finally
+        {
+            isDeleting = false;
         }
     }
 

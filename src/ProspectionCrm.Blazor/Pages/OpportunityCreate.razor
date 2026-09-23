@@ -1,4 +1,4 @@
-﻿@page "/opportunities/create"
+@page "/opportunities/create"
 
 @inject OpportunityApiService OpportunityApiService
 
@@ -33,7 +33,7 @@
         try
         {
             await OpportunityApiService.CreateAsync(OpportunityApiWriteRequest.FromForm(model));
-            NavigationManager.NavigateTo("/opportunities");
+            NavigationManager.NavigateTo("/opportunities?notice=created");
         }
         catch (Exception)
         {
