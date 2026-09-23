@@ -2,6 +2,7 @@
 
 @inject CrmTaskApiService CrmTaskApiService
 @inject OpportunityApiService OpportunityApiService
+@inject PipelineApiService PipelineApiService
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -9,40 +10,33 @@
 
 <p>Vue d'ensemble de votre prospection professionnelle.</p>
 
-<button @onclick="AddOpportunity">
-    Simuler une nouvelle opportunité
-</button>
-
-<button @onclick="RemoveOpportunity">
-    Retirer une opportunité
-</button>
-
-<div>
-    <label>Opportunités actives :</label>
-    <input type="number" @bind="activeOpportunities"/>
-</div>
-
-<section>
-    <h2>Résumé</h2>
-
-    <div class="stats-grid">
-        @foreach (var stat in summaryStats)
-        {
-            <DashboardStatCard Title="@stat.Title" Value="@stat.Value" />
-        }
-    </div>
-</section>
-
-<section>
-    <h2>Répartition par pipeline</h2>
-
-    <div class="stats-grid">
-        @foreach (var stat in pipelineStats)
-        {
-            <DashboardStatCard Title="@stat.Title" Value="@stat.Value" />
-        }
-    </div>
-</section>
+@if (isLoadingOpportunities)
+{
+    <p>Chargement des opportunités et des pipelines...</p>
+}
+else if (opportunitiesError is not null)
+{
+    <p role="alert">@opportunitiesError</p>
+    <button @onclick="LoadOpportunityStatsAsync">Réessayer</button>
+}
+else
+{
+    <section>
+        <h2>Résumé</h2>
+        <div class="stats-grid">
+            <DashboardStatCard Title="Opportunités actives" Value="@opportunities.Count" />
+        </div>
+    </section>
+    <section>
+        <h2>Répartition par pipeline</h2>
+        <div class="stats-grid">
+            @foreach (var pipeline in activePipelines)
+            {
+                <DashboardStatCard Title="@pipeline.Name" Value="@CountOpportunities(pipeline)" />
+            }
+        </div>
+    </section>
+}
 
 <section aria-label="Relances à traiter">
     <h2>Relances à traiter</h2>
@@ -83,41 +77,47 @@
 </section>
 
 @code {
-    private int activeOpportunities = 24;
+    private List<OpportunityApiDto> opportunities = [];
+    private List<PipelineApiDto> activePipelines = [];
+    private bool isLoadingOpportunities = true;
+    private string? opportunitiesError;
 
     private List<CrmTaskApiDto> dueTasks = [];
     private Dictionary<Guid, string> opportunityTitles = [];
     private bool isLoadingRelances = true;
     private string? relancesError;
 
-    private record DashboardStat(string Title, int Value);
-
-    private List<DashboardStat> pipelineStats =
-    [
-        new(".NET", 9),
-        new("Malt / Freelance", 4),
-        new("Emploi jeu vidéo", 6),
-        new("Business jeu vidéo", 5)
-    ];
-
-    private List<DashboardStat> summaryStats =>
-[
-    new("Opportunités actives", activeOpportunities)
-];
-
-    private void AddOpportunity()
+    private int CountOpportunities(PipelineApiDto pipeline)
     {
-        activeOpportunities++;
+        var stageIds = pipeline.Stages.Select(stage => stage.Id).ToHashSet();
+        return opportunities.Count(opportunity => stageIds.Contains(opportunity.PipelineStageId));
     }
 
-    private void RemoveOpportunity()
-    {
-        if (activeOpportunities == 0)
-            return;
-        activeOpportunities--;
-    }
+    protected override Task OnInitializedAsync()
+        => Task.WhenAll(LoadOpportunityStatsAsync(), LoadRelancesAsync());
 
-    protected override Task OnInitializedAsync() => LoadRelancesAsync();
+    private async Task LoadOpportunityStatsAsync()
+    {
+        isLoadingOpportunities = true;
+        opportunitiesError = null;
+        try
+        {
+            var opportunitiesRequest = OpportunityApiService.GetAllAsync();
+            // Include historical stages so active opportunities on archived stages are still counted.
+            var pipelinesRequest = PipelineApiService.GetAllAsync(includeArchived: true);
+            await Task.WhenAll(opportunitiesRequest, pipelinesRequest);
+            opportunities = await opportunitiesRequest;
+            activePipelines = (await pipelinesRequest).Where(pipeline => pipeline.ArchivedAt is null).ToList();
+        }
+        catch (Exception)
+        {
+            opportunitiesError = "Impossible de charger les opportunités et les pipelines.";
+        }
+        finally
+        {
+            isLoadingOpportunities = false;
+        }
+    }
 
     private async Task LoadRelancesAsync()
     {

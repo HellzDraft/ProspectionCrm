@@ -1,5 +1,6 @@
 @page "/opportunities/{Id:guid}/edit"
 @inject OpportunityApiService OpportunityApiService
+@inject PipelineApiService PipelineApiService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Modifier une opportunité</PageTitle>
@@ -13,6 +14,11 @@ else if (notFound)
 {
     <p>Opportunité introuvable.</p>
 }
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
 else
 {
     @if (errorMessage is not null)
@@ -21,7 +27,7 @@ else
     }
     @if (original is not null)
     {
-        <OpportunityApiForm @key="original.Id" Model="@model" IsEditing="true"
+        <OpportunityApiForm @key="original.Id" Model="@model" Pipelines="@pipelines" OriginalStageId="@original.PipelineStageId"
                             IsSubmitting="@isSubmitting" OnValidSubmit="HandleValidSubmit" />
     }
 }
@@ -29,29 +35,41 @@ else
 @code {
     [Parameter] public Guid Id { get; set; }
     private OpportunityApiDto? original;
+    private List<PipelineApiDto> pipelines = [];
+    private string? loadErrorMessage;
     private OpportunityApiFormModel model = new();
     private bool isLoading = true;
     private bool isSubmitting;
     private bool notFound;
     private string? errorMessage;
 
-    protected override async Task OnParametersSetAsync()
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
     {
         isLoading = true;
         notFound = false;
         errorMessage = null;
         original = null;
+        loadErrorMessage = null;
         try
         {
             original = await OpportunityApiService.GetByIdAsync(Id);
             notFound = original is null;
             if (original is not null)
             {
+                pipelines = await PipelineApiService.GetAllAsync(includeArchived: true);
+                var pipeline = pipelines.FirstOrDefault(item => item.Stages.Any(stage => stage.Id == original.PipelineStageId));
+                if (pipeline is null)
+                {
+                    loadErrorMessage = "Impossible de retrouver le pipeline et l'étape de cette opportunité.";
+                    return;
+                }
                 model = new()
                 {
                     Title = original.Title,
-                    PipelineCode = original.PipelineCode,
-                    StatusCode = original.StatusCode,
+                    PipelineId = pipeline.Id,
+                    PipelineStageId = original.PipelineStageId,
                     PriorityCode = original.PriorityCode,
                     Location = original.Location
                 };
@@ -59,7 +77,7 @@ else
         }
         catch (Exception)
         {
-            errorMessage = "Impossible de charger l'opportunité.";
+            loadErrorMessage = "Impossible de charger l'opportunité et ses pipelines.";
         }
         finally
         {
@@ -69,7 +87,7 @@ else
 
     private async Task HandleValidSubmit()
     {
-        if (isSubmitting || original is null)
+        if (isSubmitting || isLoading || loadErrorMessage is not null || original is null)
             return;
 
         isSubmitting = true;

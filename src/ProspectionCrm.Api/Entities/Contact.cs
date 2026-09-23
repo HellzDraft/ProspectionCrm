@@ -3,6 +3,7 @@ namespace ProspectionCrm.Api.Entities;
 public class Contact
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid WorkspaceId { get; set; }
     public Guid? CompanyId { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
@@ -14,5 +15,6 @@ public class Contact
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public Company? Company { get; set; }
+    public Workspace Workspace { get; set; } = null!;
     public ICollection<Opportunity> Opportunities { get; set; } = new List<Opportunity>();
 }

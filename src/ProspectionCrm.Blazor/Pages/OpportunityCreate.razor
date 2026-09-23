@@ -1,6 +1,7 @@
 @page "/opportunities/create"
 
 @inject OpportunityApiService OpportunityApiService
+@inject PipelineApiService PipelineApiService
 
 @inject NavigationManager NavigationManager
 
@@ -8,25 +9,67 @@
 
 <h1>Nouvelle opportunité</h1>
 
-@if (errorMessage is not null)
+@if (isLoading)
 {
-    <p role="alert">@errorMessage</p>
+    <p>Chargement des pipelines...</p>
 }
-
-<OpportunityApiForm Model="@model"
-                 IsSubmitting="@isSubmitting"
-                 SubmitText="Créer l'opportunité"
-                 OnValidSubmit="HandleValidSubmit" />
-
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadPipelinesAsync">Réessayer</button>
+}
+else if (!pipelines.Any(pipeline => pipeline.ArchivedAt is null && pipeline.Stages.Any(stage => stage.ArchivedAt is null)))
+{
+    <p>Aucun pipeline actif avec une étape disponible.</p>
+    <button @onclick="LoadPipelinesAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+        <button disabled="@isSubmitting" @onclick="LoadPipelinesAsync">Recharger les pipelines</button>
+    }
+    <OpportunityApiForm Model="@model" Pipelines="@pipelines" IsSubmitting="@isSubmitting"
+                        SubmitText="Créer l'opportunité" OnValidSubmit="HandleValidSubmit" />
+}
 
 @code {
     private OpportunityApiFormModel model = new();
+    private List<PipelineApiDto> pipelines = [];
+    private bool isLoading = true;
+    private string? loadErrorMessage;
     private bool isSubmitting;
     private string? errorMessage;
 
+    protected override Task OnInitializedAsync() => LoadPipelinesAsync();
+
+    private async Task LoadPipelinesAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            pipelines = await PipelineApiService.GetAllAsync();
+            if (!pipelines.Any(pipeline => pipeline.Id == model.PipelineId))
+                model.PipelineId = null;
+            if (!pipelines.Where(pipeline => pipeline.Id == model.PipelineId)
+                    .SelectMany(pipeline => pipeline.Stages).Any(stage => stage.Id == model.PipelineStageId))
+                model.PipelineStageId = null;
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les pipelines.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
     private async Task HandleValidSubmit()
     {
-        if (isSubmitting)
+        if (isSubmitting || isLoading || loadErrorMessage is not null)
             return;
         isSubmitting = true;
         errorMessage = null;

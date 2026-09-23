@@ -10,8 +10,9 @@ public class OpportunitiesController(IOpportunityService opportunityService) : C
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<OpportunityDto>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<OpportunityDto>>> GetAll(CancellationToken cancellationToken)
-        => Ok(await opportunityService.GetAllAsync(cancellationToken));
+    public async Task<ActionResult<IReadOnlyList<OpportunityDto>>> GetAll(
+        CancellationToken cancellationToken, [FromQuery] bool includeArchived = false)
+        => Ok(await opportunityService.GetAllAsync(includeArchived, cancellationToken));
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType<OpportunityDto>(StatusCodes.Status200OK)]
@@ -50,6 +51,18 @@ public class OpportunitiesController(IOpportunityService opportunityService) : C
 
         return NoContent();
     }
+
+    [HttpPost("{id:guid}/archive")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Archive(Guid id, CancellationToken cancellationToken)
+        => await opportunityService.ArchiveAsync(id, cancellationToken) ? NoContent() : NotFound();
+
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken cancellationToken)
+        => await opportunityService.RestoreAsync(id, cancellationToken) ? NoContent() : NotFound();
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

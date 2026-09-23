@@ -11,6 +11,7 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
     ?? throw new InvalidOperationException("La configuration ApiBaseUrl est requise.");
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 builder.Services.AddScoped<OpportunityApiService>();
+builder.Services.AddScoped<PipelineApiService>();
 
 
 builder.Services.AddScoped<CompanyApiService>();

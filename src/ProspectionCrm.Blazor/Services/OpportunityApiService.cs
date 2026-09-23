@@ -6,18 +6,24 @@ namespace ProspectionCrm.Blazor.Services;
 
 public class OpportunityApiService(HttpClient httpClient)
 {
-    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    public Task<bool> ArchiveAsync(Guid id, CancellationToken cancellationToken = default)
+        => SetArchivedAsync(id, "archive", cancellationToken);
+
+    public Task<bool> RestoreAsync(Guid id, CancellationToken cancellationToken = default)
+        => SetArchivedAsync(id, "restore", cancellationToken);
+
+    private async Task<bool> SetArchivedAsync(Guid id, string operation, CancellationToken cancellationToken)
     {
-        using var response = await httpClient.DeleteAsync($"api/opportunities/{id}", cancellationToken);
+        using var response = await httpClient.PostAsync($"api/opportunities/{id}/{operation}", null, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return false;
         response.EnsureSuccessStatusCode();
         return true;
     }
 
-    public async Task<List<OpportunityApiDto>> GetAllAsync(CancellationToken cancellationToken = default)
+    public async Task<List<OpportunityApiDto>> GetAllAsync(bool includeArchived = false, CancellationToken cancellationToken = default)
         => await httpClient.GetFromJsonAsync<List<OpportunityApiDto>>(
-            "api/opportunities", cancellationToken) ?? [];
+            $"api/opportunities?includeArchived={includeArchived.ToString().ToLowerInvariant()}", cancellationToken) ?? [];
 
     public async Task<OpportunityApiDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

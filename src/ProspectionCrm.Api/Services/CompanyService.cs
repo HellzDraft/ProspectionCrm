@@ -5,11 +5,13 @@ using ProspectionCrm.Api.Entities;
 
 namespace ProspectionCrm.Api.Services;
 
-public class CompanyService(ProspectionCrmDbContext dbContext) : ICompanyService
+public class CompanyService(ProspectionCrmDbContext dbContext, ICurrentWorkspaceProvider currentWorkspaceProvider) : ICompanyService
 {
     public async Task<IReadOnlyList<CompanyDto>> GetAllAsync(CancellationToken cancellationToken)
     {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var companies = await dbContext.Companies.AsNoTracking()
+            .Where(x => x.WorkspaceId == workspaceId)
             .OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
         return companies.Select(ToDto).ToList();
@@ -17,17 +19,20 @@ public class CompanyService(ProspectionCrmDbContext dbContext) : ICompanyService
 
     public async Task<CompanyDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var company = await dbContext.Companies.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         return company is null ? null : ToDto(company);
     }
 
     public async Task<CompanyDto> CreateAsync(
         CreateCompanyRequest request, CancellationToken cancellationToken)
     {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var company = new Company
         {
             Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
             Name = request.Name,
             Website = request.Website,
             Location = request.Location,
@@ -43,8 +48,9 @@ public class CompanyService(ProspectionCrmDbContext dbContext) : ICompanyService
     public async Task<bool> UpdateAsync(
         Guid id, UpdateCompanyRequest request, CancellationToken cancellationToken)
     {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var company = await dbContext.Companies
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (company is null)
             return false;
 
@@ -58,8 +64,9 @@ public class CompanyService(ProspectionCrmDbContext dbContext) : ICompanyService
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var company = await dbContext.Companies
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (company is null)
             return false;
 

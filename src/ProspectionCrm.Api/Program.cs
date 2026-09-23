@@ -10,6 +10,8 @@ builder.Services.AddDbContext<ProspectionCrmDbContext>(options =>
             "Configurez ConnectionStrings:DefaultConnection avec User Secrets ou une variable d'environnement.")));
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
+builder.Services.AddScoped<IPipelineService, PipelineService>();
 builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IContactService, ContactService>();

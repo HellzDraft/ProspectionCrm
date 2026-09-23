@@ -9,44 +9,32 @@
         </div>
         <div>
             <label for="opportunity-pipeline">Pipeline</label>
-            <InputSelect id="opportunity-pipeline" @bind-Value="Model.PipelineCode" @bind-Value:after="OnPipelineChanged">
+            <InputSelect id="opportunity-pipeline" @bind-Value="Model.PipelineId" @bind-Value:after="OnPipelineChanged">
                 <option value="">Sélectionner un pipeline</option>
-                @if (!string.IsNullOrEmpty(Model.PipelineCode) && !pipelineCodes.Contains(Model.PipelineCode))
+                @foreach (var pipeline in availablePipelines)
                 {
-                    <option value="@Model.PipelineCode">@OpportunityCodeHelper.GetPipelineLabel(Model.PipelineCode)</option>
-                }
-                @foreach (var code in pipelineCodes)
-                {
-                    <option value="@(code)">@OpportunityCodeHelper.GetPipelineLabel(code)</option>
+                    <option value="@pipeline.Id">@pipeline.Name@(pipeline.ArchivedAt is not null ? " (archivé)" : "")</option>
                 }
             </InputSelect>
-            <ValidationMessage For="@(() => Model.PipelineCode)" />
+            <ValidationMessage For="@(() => Model.PipelineId)" />
         </div>
         <div>
-            <label for="opportunity-status">Statut</label>
-            <InputSelect id="opportunity-status" @bind-Value="Model.StatusCode">
-                <option value="">Sélectionner un statut</option>
-                @if (!string.IsNullOrEmpty(Model.StatusCode) && !availableStatusCodes.Contains(Model.StatusCode))
+            <label for="opportunity-stage">Étape</label>
+            <InputSelect id="opportunity-stage" @bind-Value="Model.PipelineStageId">
+                <option value="">Sélectionner une étape</option>
+                @foreach (var stage in availableStages)
                 {
-                    <option value="@Model.StatusCode">@OpportunityCodeHelper.GetStatusLabel(Model.StatusCode)</option>
-                }
-                @foreach (var code in availableStatusCodes)
-                {
-                    <option value="@(code)">@OpportunityCodeHelper.GetStatusLabel(code)</option>
+                    <option value="@stage.Id">@stage.Name@(stage.ArchivedAt is not null ? " (archivée)" : "")</option>
                 }
             </InputSelect>
-            <ValidationMessage For="@(() => Model.StatusCode)" />
+            <ValidationMessage For="@(() => Model.PipelineStageId)" />
         </div>
         <div>
             <label for="opportunity-priority">Priorité</label>
             <InputSelect id="opportunity-priority" @bind-Value="Model.PriorityCode">
-                @if (!priorityCodes.Contains(Model.PriorityCode))
+                @foreach (var priority in Enum.GetValues<OpportunityPriority>())
                 {
-                    <option value="@Model.PriorityCode">@OpportunityCodeHelper.GetPriorityLabel(Model.PriorityCode)</option>
-                }
-                @foreach (var code in priorityCodes)
-                {
-                    <option value="@(code)">@OpportunityCodeHelper.GetPriorityLabel(code)</option>
+                    <option value="@OpportunityCodeHelper.GetPriorityCode(priority)">@OpportunityDisplayHelper.GetPriorityLabel(priority)</option>
                 }
             </InputSelect>
             <ValidationMessage For="@(() => Model.PriorityCode)" />
@@ -62,25 +50,26 @@
 
 @code {
     [Parameter] public OpportunityApiFormModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<PipelineApiDto> Pipelines { get; set; } = [];
+    [Parameter] public Guid? OriginalStageId { get; set; }
     [Parameter] public string SubmitText { get; set; } = "Enregistrer";
-    [Parameter] public EventCallback OnValidSubmit { get; set; }
     [Parameter] public bool IsSubmitting { get; set; }
-    [Parameter] public bool IsEditing { get; set; }
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
 
-    private static readonly string[] pipelineCodes = Enum.GetValues<PipelineType>()
-        .Select(OpportunityCodeHelper.GetPipelineCode).ToArray();
-    private static readonly string[] priorityCodes = Enum.GetValues<OpportunityPriority>()
-        .Select(OpportunityCodeHelper.GetPriorityCode).ToArray();
+    private IEnumerable<PipelineApiDto> availablePipelines => Pipelines.Where(pipeline =>
+        (pipeline.ArchivedAt is null && pipeline.Stages.Any(stage => stage.ArchivedAt is null))
+        || pipeline.Stages.Any(stage => stage.Id == OriginalStageId)).OrderBy(pipeline => pipeline.Name);
 
-    private IEnumerable<string> availableStatusCodes =>
-        OpportunityCodeHelper.GetPipeline(Model.PipelineCode) is { } pipeline
-            ? OpportunityWorkflow.GetAllowedStatuses(pipeline).Select(OpportunityCodeHelper.GetStatusCode)
-            : [];
+    private IEnumerable<PipelineStageApiDto> availableStages => Pipelines
+        .Where(pipeline => pipeline.Id == Model.PipelineId)
+        .SelectMany(pipeline => pipeline.Stages.Where(stage =>
+            (pipeline.ArchivedAt is null && stage.ArchivedAt is null) || stage.Id == OriginalStageId))
+        .OrderBy(stage => stage.SortOrder).ThenBy(stage => stage.Id);
 
     private void OnPipelineChanged()
     {
-        if (!IsEditing)
-            Model.StatusCode = string.Empty;
+        if (!availableStages.Any(stage => stage.Id == Model.PipelineStageId))
+            Model.PipelineStageId = null;
     }
 
     private async Task HandleValidSubmit()

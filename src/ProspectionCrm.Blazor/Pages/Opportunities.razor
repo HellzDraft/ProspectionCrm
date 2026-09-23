@@ -1,6 +1,7 @@
 ﻿@page "/opportunities"
 
 @inject OpportunityApiService OpportunityApiService
+@inject PipelineApiService PipelineApiService
 
 <PageTitle>Opportunités</PageTitle>
 
@@ -18,23 +19,22 @@
 {
     <p role="alert">@operationErrorMessage</p>
 }
-@if (pendingDeletion is not null)
+@if (pendingArchive is not null)
 {
-    <section aria-label="Confirmation de suppression">
-        <p>Supprimer définitivement l'opportunité « @pendingDeletion.Title » ?
-            Les tâches et relances associées (CrmTask) seront également supprimées par cascade.</p>
-        <button disabled="@isDeleting" @onclick="ConfirmDeleteAsync">Confirmer la suppression</button>
-        <button disabled="@isDeleting" @onclick="CancelDelete">Annuler</button>
-        @if (isDeleting)
+    <section aria-label="Confirmation d'archivage">
+        <p>Archiver l'opportunité « @pendingArchive.Title » ? Elle disparaîtra des vues actives mais ses données seront conservées.</p>
+        <button disabled="@isArchiving" @onclick="ConfirmArchiveAsync">Confirmer l'archivage</button>
+        <button disabled="@isArchiving" @onclick="CancelArchive">Annuler</button>
+        @if (isArchiving)
         {
-            <p role="status">Suppression en cours...</p>
+            <p role="status">Archivage en cours...</p>
         }
     </section>
 }
 @if (errorMessage is not null)
 {
     <p role="alert">@errorMessage</p>
-    <button disabled="@(isLoading || isDeleting)" @onclick="RetryLoadAsync">Réessayer</button>
+    <button disabled="@(isLoading || isArchiving)" @onclick="RetryLoadAsync">Réessayer</button>
 }
 
 <div class="view-selector">
@@ -54,13 +54,13 @@
            @bind:event="oninput"
            @bind:after="ResetPagination" />
 
-    <select @bind="selectedPipeline"
+    <select @bind="selectedPipelineId"
             @bind:after="ResetPagination">
         <option value="">Tous les pipelines</option>
-        <option value="@PipelineType.DotNet">.NET</option>
-        <option value="@PipelineType.MaltFreelance">Malt / Freelance</option>
-        <option value="@PipelineType.GameJob">Emploi jeu vidéo</option>
-        <option value="@PipelineType.GameBusiness">Business jeu vidéo</option>
+        @foreach (var pipeline in pipelines.Where(item => item.ArchivedAt is null))
+        {
+            <option value="@pipeline.Id">@pipeline.Name</option>
+        }
     </select>
 </div>
 
@@ -71,30 +71,30 @@
 else if (errorMessage is not null && !hasLoaded)
 {
 }
-else if (!filteredOpportunities.Any())
+else if (!filteredOpportunities.Any() && !isKanbanView)
 {
     <p>Aucune opportunité ne correspond aux critères.</p>
 }
 else
 {
-    @if (isKanbanView && selectedPipeline is null)
+    @if (isKanbanView && selectedPipelineId is null)
     {
         <p>Sélectionnez un pipeline pour afficher le Kanban.</p>
     }
     else if (isKanbanView)
     {
         <div class="kanban-board">
-            @foreach (var status in kanbanStatuses)
+            @foreach (var stage in kanbanStages)
             {
                 <section class="kanban-column">
                     <h2>
-                        @OpportunityCodeHelper.GetStatusLabel(status)
+                        @GetStageName(stage.Id)
                     </h2>
 
                     @foreach (var opportunity in filteredOpportunities.Where(
-                        opportunity => OpportunityCodeHelper.GetStatusKey(opportunity.StatusCode) == status))
+                        opportunity => opportunity.PipelineStageId == stage.Id))
                     {
-                        <OpportunityApiCard Opportunity="@opportunity" />
+                        <OpportunityApiCard Opportunity="@opportunity" PipelineName="@GetPipelineName(opportunity.PipelineStageId)" StageName="@GetStageName(opportunity.PipelineStageId)" />
                     }
                 </section>
             }
@@ -147,12 +147,12 @@ else
                         <td>@OpportunityCodeHelper.GetCompanyLabel(opportunity.CompanyId)</td>
 
                         <td>
-                            <span class="pipeline-badge @GetPipelineClass(opportunity.PipelineCode)">
-                                @OpportunityCodeHelper.GetPipelineLabel(opportunity.PipelineCode)
+                            <span class="pipeline-badge">
+                                @GetPipelineName(opportunity.PipelineStageId)
                             </span>
                         </td>
 
-                        <td>@OpportunityCodeHelper.GetStatusLabel(opportunity.StatusCode)</td>
+                        <td>@GetStageName(opportunity.PipelineStageId)</td>
 
                         <td>
                             <span class="priority-badge @GetPriorityClass(opportunity.PriorityCode)">
@@ -164,7 +164,7 @@ else
 
                         <td>
                             <NavLink href="@($"/opportunities/{opportunity.Id}/edit")">Modifier</NavLink>
-                            <button disabled="@(isDeleting || isLoading)" @onclick="() => RequestDelete(opportunity)">Supprimer</button>
+                            <button disabled="@(isArchiving || isLoading)" @onclick="() => RequestArchive(opportunity)">Archiver</button>
                         </td>
                     </tr>
                 }
@@ -194,7 +194,10 @@ else
 
     private string searchTerm = string.Empty;
 
-    private PipelineType? selectedPipeline;
+    private Guid? selectedPipelineId;
+    private List<PipelineApiDto> pipelines = [];
+    private Dictionary<Guid, PipelineApiDto> stagePipelines = [];
+    private Dictionary<Guid, PipelineStageApiDto> stages = [];
 
     private string sortColumn = "Title";
     private bool sortAscending = true;
@@ -207,12 +210,11 @@ else
         (
             opportunity.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
             || (opportunity.Location?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (opportunity.SourceName?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
         )
         &&
         (
-            selectedPipeline is null
-            || OpportunityCodeHelper.GetPipeline(opportunity.PipelineCode) == selectedPipeline.Value
+            selectedPipelineId is null
+            || stagePipelines.GetValueOrDefault(opportunity.PipelineStageId)?.Id == selectedPipelineId.Value
         ));
 
     
@@ -228,25 +230,19 @@ else
         };
     }
 
-    private string GetPipelineClass(string code)
-    {
-        return OpportunityCodeHelper.GetPipeline(code) switch
-        {
-            PipelineType.DotNet => "pipeline-dotnet",
-            PipelineType.MaltFreelance => "pipeline-malt",
-            PipelineType.GameJob => "pipeline-game-job",
-            PipelineType.GameBusiness => "pipeline-game-business",
-            _ => string.Empty
-        };
-    }
+    private string GetPipelineName(Guid stageId) => stagePipelines.TryGetValue(stageId, out var pipeline)
+        ? pipeline.Name + (pipeline.ArchivedAt is null ? "" : " (archivé)") : "Pipeline indisponible";
+
+    private string GetStageName(Guid stageId) => stages.TryGetValue(stageId, out var stage)
+        ? stage.Name + (stage.ArchivedAt is null ? "" : " (archivée)") : "Étape indisponible";
 
     private bool isLoading = true;
 
     private string? errorMessage;
     private string? operationErrorMessage;
     private string? successMessage;
-    private OpportunityApiDto? pendingDeletion;
-    private bool isDeleting;
+    private OpportunityApiDto? pendingArchive;
+    private bool isArchiving;
     private bool hasLoaded;
 
     [SupplyParameterFromQuery(Name = "notice")]
@@ -272,7 +268,20 @@ else
         errorMessage = null;
         try
         {
-            opportunities = await OpportunityApiService.GetAllAsync();
+            var opportunitiesRequest = OpportunityApiService.GetAllAsync();
+            var pipelinesRequest = PipelineApiService.GetAllAsync(includeArchived: true);
+            await Task.WhenAll(opportunitiesRequest, pipelinesRequest);
+            var loadedPipelines = await pipelinesRequest;
+            var loadedStages = loadedPipelines.SelectMany(pipeline => pipeline.Stages).ToDictionary(stage => stage.Id);
+            var loadedStagePipelines = loadedPipelines.SelectMany(pipeline =>
+                pipeline.Stages.Select(stage => new { StageId = stage.Id, Pipeline = pipeline }))
+                .ToDictionary(item => item.StageId, item => item.Pipeline);
+            opportunities = await opportunitiesRequest;
+            pipelines = loadedPipelines;
+            stages = loadedStages;
+            stagePipelines = loadedStagePipelines;
+            if (selectedPipelineId is not null && !pipelines.Any(pipeline => pipeline.Id == selectedPipelineId && pipeline.ArchivedAt is null))
+                selectedPipelineId = null;
             hasLoaded = true;
             currentPage = Math.Clamp(currentPage, 1, Math.Max(1, totalPages));
         }
@@ -286,49 +295,49 @@ else
         }
     }
 
-    private void RequestDelete(OpportunityApiDto opportunity)
+    private void RequestArchive(OpportunityApiDto opportunity)
     {
-        if (isDeleting)
+        if (isArchiving)
             return;
-        pendingDeletion = opportunity;
+        pendingArchive = opportunity;
         operationErrorMessage = null;
         successMessage = null;
     }
 
-    private void CancelDelete()
+    private void CancelArchive()
     {
-        if (!isDeleting)
+        if (!isArchiving)
         {
-            pendingDeletion = null;
+            pendingArchive = null;
             operationErrorMessage = null;
         }
     }
 
-    private async Task ConfirmDeleteAsync()
+    private async Task ConfirmArchiveAsync()
     {
-        if (isDeleting || pendingDeletion is null)
+        if (isArchiving || pendingArchive is null)
             return;
 
-        isDeleting = true;
+        isArchiving = true;
         operationErrorMessage = null;
         successMessage = null;
         try
         {
-            var deleted = await OpportunityApiService.DeleteAsync(pendingDeletion.Id);
-            pendingDeletion = null;
+            var archived = await OpportunityApiService.ArchiveAsync(pendingArchive.Id);
+            pendingArchive = null;
             await LoadOpportunitiesAsync();
-            if (deleted)
-                successMessage = "Opportunité supprimée.";
+            if (archived)
+                successMessage = "Opportunité archivée.";
             else
                 operationErrorMessage = "Cette opportunité n'existe plus.";
         }
         catch (Exception)
         {
-            operationErrorMessage = "Impossible de supprimer l'opportunité.";
+            operationErrorMessage = "Impossible d'archiver l'opportunité.";
         }
         finally
         {
-            isDeleting = false;
+            isArchiving = false;
         }
     }
 
@@ -343,9 +352,11 @@ else
     {
         isKanbanView = true;
     }
-    private IEnumerable<string> kanbanStatuses =>
-        filteredOpportunities.Select(opportunity => OpportunityCodeHelper.GetStatusKey(opportunity.StatusCode))
-            .Distinct().OrderBy(OpportunityCodeHelper.GetStatusLabel);
+    private IEnumerable<PipelineStageApiDto> kanbanStages => pipelines
+        .Where(pipeline => pipeline.Id == selectedPipelineId)
+        .SelectMany(pipeline => pipeline.Stages)
+        .Where(stage => stage.ArchivedAt is null || opportunities.Any(opportunity => opportunity.PipelineStageId == stage.Id))
+        .OrderBy(stage => stage.SortOrder).ThenBy(stage => stage.Id);
 
     private IEnumerable<OpportunityApiDto> sortedOpportunities
     {
@@ -354,8 +365,8 @@ else
             var sorted = sortColumn switch
             {
                 "CompanyId" => filteredOpportunities.OrderBy(opportunity => opportunity.CompanyId),
-                "Pipeline" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetPipelineLabel(opportunity.PipelineCode)),
-                "Status" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetStatusLabel(opportunity.StatusCode)),
+                "Pipeline" => filteredOpportunities.OrderBy(opportunity => GetPipelineName(opportunity.PipelineStageId)),
+                "Status" => filteredOpportunities.OrderBy(opportunity => GetStageName(opportunity.PipelineStageId)),
                 "Priority" => filteredOpportunities.OrderBy(opportunity => OpportunityCodeHelper.GetPriorityLabel(opportunity.PriorityCode)),
                 "Location" => filteredOpportunities.OrderBy(opportunity => opportunity.Location),
 

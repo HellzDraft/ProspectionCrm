@@ -1,4 +1,5 @@
 ﻿@page "/settings"
+@inject PipelineApiService PipelineApiService
 
 <PageTitle>Settings</PageTitle>
 
@@ -16,18 +17,28 @@
     <InputText @bind-Value="Email" />
 </div>
 
-<div>
-    <label>Pipeline par défaut</label>
-
-    <InputSelect @bind-Value="DefaultPipeline">
-        <option value="">Aucun pipeline par défaut</option>
-        <option value="@PipelineType.DotNet">.NET</option>
-        <option value="@PipelineType.MaltFreelance">Malt / Freelance</option>
-        <option value="@PipelineType.GameJob">Emploi jeu vidéo</option>
-        <option value="@PipelineType.GameBusiness">Business jeu vidéo</option>
-    </InputSelect>
-</div>
-
+@if (isLoadingPipelines)
+{
+    <p>Chargement des pipelines...</p>
+}
+else if (pipelineError is not null)
+{
+    <p role="alert">@pipelineError</p>
+    <button @onclick="LoadPipelinesAsync">Réessayer</button>
+}
+else
+{
+    <div>
+        <label>Pipeline par défaut</label>
+        <InputSelect @bind-Value="DefaultPipelineId">
+            <option value="">Aucun pipeline par défaut</option>
+            @foreach (var pipeline in pipelines)
+            {
+                <option value="@pipeline.Id">@pipeline.Name</option>
+            }
+        </InputSelect>
+    </div>
+}
 
 <div>
     <label>Nombre d'éléments par page</label>
@@ -51,9 +62,32 @@
 
     private string Email;
 
-    private PipelineType? DefaultPipeline;
+    private Guid? DefaultPipelineId;
+    private List<PipelineApiDto> pipelines = [];
+    private bool isLoadingPipelines = true;
+    private string? pipelineError;
 
     private int ItemsPage = 25;
 
     bool ShowCompletedActions;
+
+    protected override Task OnInitializedAsync() => LoadPipelinesAsync();
+
+    private async Task LoadPipelinesAsync()
+    {
+        isLoadingPipelines = true;
+        pipelineError = null;
+        try
+        {
+            pipelines = await PipelineApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            pipelineError = "Impossible de charger les pipelines.";
+        }
+        finally
+        {
+            isLoadingPipelines = false;
+        }
+    }
 }
