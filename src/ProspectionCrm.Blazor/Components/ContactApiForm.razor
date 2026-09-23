@@ -1,0 +1,66 @@
+<EditForm Model="@Model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <fieldset disabled="@IsSubmitting">
+        <div>
+            <label for="contact-firstname">Prénom</label>
+            <InputText id="contact-firstname" @bind-Value="Model.FirstName" />
+            <ValidationMessage For="@(() => Model.FirstName)" />
+        </div>
+        <div>
+            <label for="contact-lastname">Nom</label>
+            <InputText id="contact-lastname" @bind-Value="Model.LastName" />
+            <ValidationMessage For="@(() => Model.LastName)" />
+        </div>
+        <div>
+            <label for="contact-email">Email</label>
+            <InputText id="contact-email" @bind-Value="Model.Email" />
+            <ValidationMessage For="@(() => Model.Email)" />
+        </div>
+        <div>
+            <label for="contact-phone">Téléphone</label>
+            <InputText id="contact-phone" @bind-Value="Model.Phone" />
+            <ValidationMessage For="@(() => Model.Phone)" />
+        </div>
+        <div>
+            <label for="contact-jobtitle">Fonction</label>
+            <InputText id="contact-jobtitle" @bind-Value="Model.JobTitle" />
+            <ValidationMessage For="@(() => Model.JobTitle)" />
+        </div>
+        <div>
+            <label for="contact-linkedinurl">LinkedIn</label>
+            <InputText id="contact-linkedinurl" @bind-Value="Model.LinkedInUrl" />
+            <ValidationMessage For="@(() => Model.LinkedInUrl)" />
+        </div>
+        <div>
+            <label for="contact-company">Entreprise</label>
+            <InputSelect id="contact-company" @bind-Value="Model.CompanyId">
+                <option value="">Aucune entreprise</option>
+                @if (Model.CompanyId is { } selectedId && !Companies.Any(company => company.Id == selectedId))
+                {
+                    <option value="@selectedId" disabled>Entreprise indisponible</option>
+                }
+                @foreach (var company in Companies.OrderBy(company => company.Name))
+                {
+                    <option value="@company.Id">@company.Name</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.CompanyId)" />
+        </div>
+        <button type="submit" disabled="@IsSubmitting">@SubmitText</button>
+    </fieldset>
+</EditForm>
+
+@code {
+    [Parameter] public ContactApiFormModel Model { get; set; } = default!;
+    [Parameter] public string SubmitText { get; set; } = "Enregistrer";
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+    [Parameter] public IReadOnlyList<CompanyApiDto> Companies { get; set; } = [];
+
+    private async Task HandleValidSubmit()
+    {
+        if (!IsSubmitting)
+            await OnValidSubmit.InvokeAsync();
+    }
+}

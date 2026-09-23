@@ -13,9 +13,9 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseU
 builder.Services.AddScoped<OpportunityApiService>();
 
 
-builder.Services.AddSingleton<CompanyService>();
+builder.Services.AddScoped<CompanyApiService>();
 
-builder.Services.AddSingleton<ContactService>();
+builder.Services.AddScoped<ContactApiService>();
 
 builder.Services.AddSingleton<FollowUpActionService>();
 

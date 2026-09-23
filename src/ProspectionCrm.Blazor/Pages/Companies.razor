@@ -1,74 +1,108 @@
-﻿@page "/companies"
-
-@inject CompanyService CompanyService
+@page "/companies"
+@inject CompanyApiService CompanyApiService
 
 <PageTitle>Entreprises</PageTitle>
-
 <h1>Entreprises</h1>
+<NavLink href="/companies/create">Ajouter une entreprise</NavLink>
 
-<p>Liste des entreprises suivies dans le CRM.</p>
-
+@if (successMessage is not null)
+{
+    <p role="status">@successMessage</p>
+}
+@if (operationErrorMessage is not null)
+{
+    <p role="alert">@operationErrorMessage</p>
+}
+@if (pendingDeletion is not null)
+{
+    <section aria-label="Confirmation de suppression">
+        <p>Supprimer définitivement l'entreprise « @pendingDeletion.Name » ?
+            Les contacts et opportunités liés seront conservés, mais leur association à cette entreprise sera retirée.</p>
+        <button disabled="@(isDeleting || isLoading)" @onclick="ConfirmDeleteAsync">Confirmer la suppression</button>
+        <button disabled="@isDeleting" @onclick="CancelDelete">Annuler</button>
+        @if (isDeleting)
+        {
+            <p role="status">Suppression en cours...</p>
+        }
+    </section>
+}
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+    <button disabled="@(isLoading || isDeleting)" @onclick="LoadAsync">Réessayer</button>
+}
 @if (isLoading)
 {
     <p>Chargement des entreprises...</p>
 }
-else if (errorMessage is not null)
+else if (hasLoaded)
 {
-    <p>@errorMessage</p>
-}
-else if (!companies.Any())
-{
-    <p>Aucune entreprise enregistrée.</p>
-}
-else
-{
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Nom</th>
-                <th>Type</th>
-                <th>Secteur</th>
-                <th>Localisation</th>
-                <th>Site web</th>
-                <th>Notes</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            @foreach (var company in companies)
-            {
+    @if (items.Count == 0)
+    {
+        <p>Aucune entreprise.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
                 <tr>
-                    <td>@company.Name</td>
-                    <td>@company.Type</td>
-                    <td>@company.Industry</td>
-                    <td>@company.Location</td>
-                    <td>@company.Website</td>
-                    <td>@company.Notes</td>
-                    <td>
-                            <NavLink href="@($"/companies/{company.Id}")">
-                                Voir
-                            </NavLink>
-                        </td>
+                    <th>Nom</th>
+                    <th>Site web</th>
+                    <th>Localisation</th>
+                    <th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        <td>@item.Name</td>
+                        <td>@item.Website</td>
+                        <td>@item.Location</td>
+                        <td>
+                            <NavLink href="@($"/companies/{item.Id}/edit")">Modifier</NavLink>
+                            <button disabled="@(isLoading || isDeleting)" @onclick="() => RequestDelete(item)">Supprimer</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
 @code {
-
-    private List<CompanyDto> companies = [];
-
+    private List<CompanyApiDto> items = [];
+    private CompanyApiDto? pendingDeletion;
     private bool isLoading = true;
-
+    private bool isDeleting;
+    private bool hasLoaded;
     private string? errorMessage;
+    private string? operationErrorMessage;
+    private string? successMessage;
 
-    protected override async Task OnInitializedAsync()
+    [SupplyParameterFromQuery(Name = "notice")]
+    public string? Notice { get; set; }
+
+    protected override void OnParametersSet()
     {
+        successMessage = Notice switch
+        {
+            "created" => "Entreprise créée.",
+            "updated" => "Entreprise modifiée.",
+            _ => null
+        };
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
         try
         {
-            companies = await CompanyService.GetAllAsync();
+            items = await CompanyApiService.GetAllAsync();
+            hasLoaded = true;
         }
         catch (Exception)
         {
@@ -77,6 +111,51 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private void RequestDelete(CompanyApiDto item)
+    {
+        if (isDeleting || isLoading)
+            return;
+        pendingDeletion = item;
+        operationErrorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (!isDeleting)
+        {
+            pendingDeletion = null;
+            operationErrorMessage = null;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (isDeleting || isLoading || pendingDeletion is null)
+            return;
+        isDeleting = true;
+        operationErrorMessage = null;
+        successMessage = null;
+        try
+        {
+            var deleted = await CompanyApiService.DeleteAsync(pendingDeletion.Id);
+            pendingDeletion = null;
+            await LoadAsync();
+            if (deleted)
+                successMessage = "Entreprise supprimée.";
+            else
+                operationErrorMessage = "Cette entreprise n'existe plus.";
+        }
+        catch (Exception)
+        {
+            operationErrorMessage = "Impossible de supprimer l'entreprise.";
+        }
+        finally
+        {
+            isDeleting = false;
         }
     }
 }

@@ -1,0 +1,124 @@
+@page "/contacts/{Id:guid}/edit"
+@inject ContactApiService ContactApiService
+@inject CompanyApiService CompanyApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Modifier un contact</PageTitle>
+<h1>Modifier un contact</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (notFound)
+{
+    <p>Contact introuvable.</p>
+}
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+        <button disabled="@isSubmitting" @onclick="RefreshCompaniesAsync">Recharger les entreprises</button>
+    }
+    <ContactApiForm Model="@model" IsSubmitting="@isSubmitting" Companies="@companies"
+                    SubmitText="Enregistrer" OnValidSubmit="HandleValidSubmit" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private ContactApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private string? loadErrorMessage;
+    private bool notFound;
+    private List<CompanyApiDto> companies = [];
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        errorMessage = null;
+        notFound = false;
+        try
+        {
+            var item = await ContactApiService.GetByIdAsync(Id);
+            if (item is null)
+            {
+                notFound = true;
+                return;
+            }
+            companies = await CompanyApiService.GetAllAsync();
+            model = new()
+            {
+                CompanyId = item.CompanyId,
+                FirstName = item.FirstName,
+                LastName = item.LastName,
+                Email = item.Email,
+                Phone = item.Phone,
+                JobTitle = item.JobTitle,
+                LinkedInUrl = item.LinkedInUrl
+            };
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger le contact et les entreprises.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshCompaniesAsync()
+    {
+        if (isSubmitting)
+            return;
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            companies = await CompanyApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les entreprises.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || notFound || isLoading || loadErrorMessage is not null)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            var updated = await ContactApiService.UpdateAsync(Id, ContactApiWriteRequest.FromForm(model));
+            if (!updated)
+                notFound = true;
+            else
+                NavigationManager.NavigateTo("/contacts?notice=updated");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de modifier le contact.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

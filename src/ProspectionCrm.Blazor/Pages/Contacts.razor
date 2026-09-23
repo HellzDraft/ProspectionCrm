@@ -1,80 +1,178 @@
-﻿@page "/contacts"
-
-@inject ContactService ContactService
+@page "/contacts"
+@inject ContactApiService ContactApiService
+@inject CompanyApiService CompanyApiService
 
 <PageTitle>Contacts</PageTitle>
-
 <h1>Contacts</h1>
+<NavLink href="/contacts/create">Ajouter un contact</NavLink>
 
-<p>Liste des contacts suivis dans le CRM</p>
-
+@if (successMessage is not null)
+{
+    <p role="status">@successMessage</p>
+}
+@if (operationErrorMessage is not null)
+{
+    <p role="alert">@operationErrorMessage</p>
+}
+@if (pendingDeletion is not null)
+{
+    <section aria-label="Confirmation de suppression">
+        <p>Supprimer définitivement le contact « @pendingDeletion.FirstName @pendingDeletion.LastName » ?
+            Les opportunités liées seront conservées, mais leur association à ce contact sera retirée.</p>
+        <button disabled="@(isDeleting || isLoading)" @onclick="ConfirmDeleteAsync">Confirmer la suppression</button>
+        <button disabled="@isDeleting" @onclick="CancelDelete">Annuler</button>
+        @if (isDeleting)
+        {
+            <p role="status">Suppression en cours...</p>
+        }
+    </section>
+}
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+    <button disabled="@(isLoading || isDeleting)" @onclick="LoadAsync">Réessayer</button>
+}
 @if (isLoading)
 {
     <p>Chargement des contacts...</p>
 }
-else if (errorMessage is not null)
+else if (hasLoaded)
 {
-    <p>@errorMessage</p>
-}
-else if (!contacts.Any())
-{
-    <p>Aucun contact enregistré.</p>
-}
-else
-{
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Nom</th>
-                <th>Fonction</th>
-                <th>Entreprise</th>
-                <th>Email</th>
-                <th>Téléphone</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            @foreach (var contact in contacts)
-            {
+    @if (items.Count == 0)
+    {
+        <p>Aucun contact.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
                 <tr>
-                    <td>@contact.FirstName @contact.LastName</td>
-                    <td>@contact.Role</td>
-                    <td>@contact.CompanyName</td>
-                    <td>@contact.Email</td>
-                    <td>@contact.Phone</td>
-                    <td>
-                            <NavLink href="@($"/contacts/{contact.Id}")">
-                                Voir
-                            </NavLink>
-                        </td>
+                    <th>Nom complet</th>
+                    <th>Fonction</th>
+                    <th>Entreprise</th>
+                    <th>Email</th>
+                    <th>Téléphone</th>
+                    <th>LinkedIn</th>
+                    <th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        <td>@item.FirstName @item.LastName</td>
+                        <td>@item.JobTitle</td>
+                        <td>@GetCompanyName(item.CompanyId)</td>
+                        <td>@item.Email</td>
+                        <td>@item.Phone</td>
+                        <td>@item.LinkedInUrl</td>
+                        <td>
+                            <NavLink href="@($"/contacts/{item.Id}/edit")">Modifier</NavLink>
+                            <button disabled="@(isLoading || isDeleting)" @onclick="() => RequestDelete(item)">Supprimer</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
 @code {
-
-    private List<ContactDto> contacts = [];
-
+    private List<ContactApiDto> items = [];
+    private Dictionary<Guid, string> companyNames = [];
+    private ContactApiDto? pendingDeletion;
     private bool isLoading = true;
-
+    private bool isDeleting;
+    private bool hasLoaded;
     private string? errorMessage;
+    private string? operationErrorMessage;
+    private string? successMessage;
 
-    protected override async Task OnInitializedAsync()
+    [SupplyParameterFromQuery(Name = "notice")]
+    public string? Notice { get; set; }
+
+    protected override void OnParametersSet()
     {
+        successMessage = Notice switch
+        {
+            "created" => "Contact créé.",
+            "updated" => "Contact modifié.",
+            _ => null
+        };
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
         try
         {
-            contacts = await ContactService.GetAllAsync();
+            var contactsTask = ContactApiService.GetAllAsync();
+            var companiesTask = CompanyApiService.GetAllAsync();
+            await Task.WhenAll(contactsTask, companiesTask);
+            var names = (await companiesTask).ToDictionary(company => company.Id, company => company.Name);
+            items = await contactsTask;
+            companyNames = names;
+            hasLoaded = true;
         }
         catch (Exception)
         {
-            errorMessage = "Impossible de charger les contacts.";
+            errorMessage = "Impossible de charger les contacts et leurs entreprises.";
         }
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private string GetCompanyName(Guid? companyId) => companyId is null
+        ? "—"
+        : companyNames.GetValueOrDefault(companyId.Value, "Entreprise indisponible");
+
+    private void RequestDelete(ContactApiDto item)
+    {
+        if (isDeleting || isLoading)
+            return;
+        pendingDeletion = item;
+        operationErrorMessage = null;
+        successMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (!isDeleting)
+        {
+            pendingDeletion = null;
+            operationErrorMessage = null;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (isDeleting || isLoading || pendingDeletion is null)
+            return;
+        isDeleting = true;
+        operationErrorMessage = null;
+        successMessage = null;
+        try
+        {
+            var deleted = await ContactApiService.DeleteAsync(pendingDeletion.Id);
+            pendingDeletion = null;
+            await LoadAsync();
+            if (deleted)
+                successMessage = "Contact supprimé.";
+            else
+                operationErrorMessage = "Ce contact n'existe plus.";
+        }
+        catch (Exception)
+        {
+            operationErrorMessage = "Impossible de supprimer le contact.";
+        }
+        finally
+        {
+            isDeleting = false;
         }
     }
 }

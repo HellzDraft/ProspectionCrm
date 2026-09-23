@@ -1,0 +1,96 @@
+@page "/companies/{Id:guid}/edit"
+@inject CompanyApiService CompanyApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Modifier une entreprise</PageTitle>
+<h1>Modifier une entreprise</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (notFound)
+{
+    <p>Entreprise introuvable.</p>
+}
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+    }
+    <CompanyApiForm Model="@model" IsSubmitting="@isSubmitting"
+                    SubmitText="Enregistrer" OnValidSubmit="HandleValidSubmit" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private CompanyApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private string? loadErrorMessage;
+    private bool notFound;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        errorMessage = null;
+        notFound = false;
+        try
+        {
+            var item = await CompanyApiService.GetByIdAsync(Id);
+            if (item is null)
+            {
+                notFound = true;
+                return;
+            }
+            model = new()
+            {
+                Name = item.Name,
+                Website = item.Website,
+                Location = item.Location
+            };
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger l'entreprise.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || notFound || isLoading || loadErrorMessage is not null)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            var updated = await CompanyApiService.UpdateAsync(Id, CompanyApiWriteRequest.FromForm(model));
+            if (!updated)
+                notFound = true;
+            else
+                NavigationManager.NavigateTo("/companies?notice=updated");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de modifier l'entreprise.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

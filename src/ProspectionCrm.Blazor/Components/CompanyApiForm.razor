@@ -1,0 +1,35 @@
+<EditForm Model="@Model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <fieldset disabled="@IsSubmitting">
+        <div>
+            <label for="company-name">Nom</label>
+            <InputText id="company-name" @bind-Value="Model.Name" />
+            <ValidationMessage For="@(() => Model.Name)" />
+        </div>
+        <div>
+            <label for="company-website">Site web</label>
+            <InputText id="company-website" @bind-Value="Model.Website" />
+            <ValidationMessage For="@(() => Model.Website)" />
+        </div>
+        <div>
+            <label for="company-location">Localisation</label>
+            <InputText id="company-location" @bind-Value="Model.Location" />
+            <ValidationMessage For="@(() => Model.Location)" />
+        </div>
+        <button type="submit" disabled="@IsSubmitting">@SubmitText</button>
+    </fieldset>
+</EditForm>
+
+@code {
+    [Parameter] public CompanyApiFormModel Model { get; set; } = default!;
+    [Parameter] public string SubmitText { get; set; } = "Enregistrer";
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+
+    private async Task HandleValidSubmit()
+    {
+        if (!IsSubmitting)
+            await OnValidSubmit.InvokeAsync();
+    }
+}

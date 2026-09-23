@@ -1,0 +1,40 @@
+@page "/companies/create"
+@inject CompanyApiService CompanyApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nouvelle entreprise</PageTitle>
+<h1>Nouvelle entreprise</h1>
+
+@if (errorMessage is not null)
+{
+    <p role="alert">@errorMessage</p>
+}
+<CompanyApiForm Model="@model" IsSubmitting="@isSubmitting"
+                SubmitText="Créer l'entreprise" OnValidSubmit="HandleValidSubmit" />
+
+@code {
+    private CompanyApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await CompanyApiService.CreateAsync(CompanyApiWriteRequest.FromForm(model));
+            NavigationManager.NavigateTo("/companies?notice=created");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de créer l'entreprise.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

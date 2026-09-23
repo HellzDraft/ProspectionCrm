@@ -1,0 +1,98 @@
+@page "/contacts/create"
+@inject ContactApiService ContactApiService
+@inject CompanyApiService CompanyApiService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nouveau contact</PageTitle>
+<h1>Nouveau contact</h1>
+
+@if (isLoading)
+{
+    <p>Chargement...</p>
+}
+else if (loadErrorMessage is not null)
+{
+    <p role="alert">@loadErrorMessage</p>
+    <button @onclick="LoadAsync">Réessayer</button>
+}
+else
+{
+    @if (errorMessage is not null)
+    {
+        <p role="alert">@errorMessage</p>
+        <button disabled="@isSubmitting" @onclick="RefreshCompaniesAsync">Recharger les entreprises</button>
+    }
+    <ContactApiForm Model="@model" IsSubmitting="@isSubmitting" Companies="@companies"
+                    SubmitText="Créer le contact" OnValidSubmit="HandleValidSubmit" />
+}
+
+@code {
+    private ContactApiFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private string? loadErrorMessage;
+    private List<CompanyApiDto> companies = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        errorMessage = null;
+        try
+        {
+            companies = await CompanyApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les entreprises.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshCompaniesAsync()
+    {
+        if (isSubmitting)
+            return;
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            companies = await CompanyApiService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            loadErrorMessage = "Impossible de charger les entreprises.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (isSubmitting || isLoading || loadErrorMessage is not null)
+            return;
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await ContactApiService.CreateAsync(ContactApiWriteRequest.FromForm(model));
+            NavigationManager.NavigateTo("/contacts?notice=created");
+        }
+        catch (Exception)
+        {
+            errorMessage = "Impossible de créer le contact.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
