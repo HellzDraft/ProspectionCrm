@@ -21,6 +21,10 @@ builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISourceExecutionService, SourceExecutionService>();
 builder.Services.AddScoped<IOpportunitySourceService, OpportunitySourceService>();
 builder.Services.AddScoped<ICampaignService, CampaignService>();
+builder.Services.AddScoped<IApplicationService, ApplicationService>();
+builder.Services.AddScoped<IProposalService, ProposalService>();
+builder.Services.AddScoped<IEmailMessageService, EmailMessageService>();
+builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
 builder.Services.AddOpenApi();
 
 if (builder.Environment.IsDevelopment())

@@ -22,6 +22,11 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignOpportunity> CampaignOpportunities => Set<CampaignOpportunity>();
 
+    public DbSet<Application> Applications => Set<Application>();
+    public DbSet<Proposal> Proposals => Set<Proposal>();
+    public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ProspectionCrmDbContext).Assembly);
 }

@@ -24,4 +24,8 @@ public class Opportunity
     public ICollection<CrmTask> CrmTasks { get; set; } = new List<CrmTask>();
     public ICollection<OpportunitySource> OpportunitySources { get; set; } = new List<OpportunitySource>();
     public ICollection<CampaignOpportunity> CampaignOpportunities { get; set; } = new List<CampaignOpportunity>();
+    public ICollection<Application> Applications { get; set; } = new List<Application>();
+    public ICollection<Proposal> Proposals { get; set; } = new List<Proposal>();
+    public ICollection<EmailMessage> EmailMessages { get; set; } = new List<EmailMessage>();
+    public ICollection<CalendarEvent> CalendarEvents { get; set; } = new List<CalendarEvent>();
 }

@@ -13,4 +13,5 @@ public class Company
     public Workspace Workspace { get; set; } = null!;
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
     public ICollection<Opportunity> Opportunities { get; set; } = new List<Opportunity>();
+    public ICollection<EmailMessage> EmailMessages { get; set; } = new List<EmailMessage>();
 }
