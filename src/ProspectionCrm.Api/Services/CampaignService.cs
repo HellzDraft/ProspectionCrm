@@ -172,6 +172,6 @@ public class CampaignService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
         UpdatedAt = entity.UpdatedAt,
         ArchivedAt = entity.ArchivedAt,
         Opportunities = entity.CampaignOpportunities.OrderBy(x => x.AddedAt).ThenBy(x => x.Id)
-            .Select(x => new CampaignOpportunityDto { Id = x.Id, OpportunityId = x.OpportunityId, AddedAt = x.AddedAt }).ToList()
+            .Select(x => new CampaignOpportunityDto { Id = x.Id, CampaignId = x.CampaignId, OpportunityId = x.OpportunityId, AddedAt = x.AddedAt }).ToList()
     };
 }
