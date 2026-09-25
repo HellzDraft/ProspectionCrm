@@ -10,4 +10,5 @@ public class PipelineDto
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
     public IReadOnlyList<PipelineStageDto> Stages { get; set; } = [];
+    public Guid? PreferredCandidateProfileId { get; set; }
 }

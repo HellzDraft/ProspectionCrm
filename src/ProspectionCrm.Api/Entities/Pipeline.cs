@@ -15,4 +15,6 @@ public class Pipeline
     public ICollection<PipelineStage> Stages { get; set; } = new List<PipelineStage>();
     public ICollection<SavedSearch> SavedSearches { get; set; } = new List<SavedSearch>();
     public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
+    public Guid? PreferredCandidateProfileId { get; set; }
+    public CandidateProfile? PreferredCandidateProfile { get; set; }
 }

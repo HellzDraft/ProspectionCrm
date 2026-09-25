@@ -27,6 +27,18 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
 
+    public DbSet<Document> Documents => Set<Document>();
+    public DbSet<CandidateProfile> CandidateProfiles => Set<CandidateProfile>();
+    public DbSet<Experience> Experiences => Set<Experience>();
+    public DbSet<Education> Educations => Set<Education>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Skill> Skills => Set<Skill>();
+    public DbSet<CandidateProfileExperience> CandidateProfileExperiences => Set<CandidateProfileExperience>();
+    public DbSet<CandidateProfileEducation> CandidateProfileEducations => Set<CandidateProfileEducation>();
+    public DbSet<CandidateProfileProject> CandidateProfileProjects => Set<CandidateProfileProject>();
+    public DbSet<CandidateProfileSkill> CandidateProfileSkills => Set<CandidateProfileSkill>();
+    public DbSet<ProjectSkill> ProjectSkills => Set<ProjectSkill>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ProspectionCrmDbContext).Assembly);
 }

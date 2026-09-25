@@ -40,9 +40,16 @@ public class ApplicationService(ProspectionCrmDbContext dbContext, ICurrentWorks
         var error = Validate(request.StatusCode);
         if (error is not null)
             return (true, null, error);
+        error = await ValidateReferencesAsync(workspaceId, request.CandidateProfileId, request.CvDocumentId,
+            request.CoverLetterDocumentId, null, cancellationToken);
+        if (error is not null)
+            return (true, null, error);
         var entity = new Application
         {
             OpportunityId = opportunityId,
+            CandidateProfileId = request.CandidateProfileId,
+            CvDocumentId = request.CvDocumentId,
+            CoverLetterDocumentId = request.CoverLetterDocumentId,
             StatusCode = request.StatusCode,
             SubmittedAt = request.SubmittedAt?.ToUniversalTime(),
             ChannelCode = request.ChannelCode,
@@ -64,6 +71,13 @@ public class ApplicationService(ProspectionCrmDbContext dbContext, ICurrentWorks
         var error = Validate(request.StatusCode);
         if (error is not null)
             return (true, error);
+        error = await ValidateReferencesAsync(workspaceId, request.CandidateProfileId, request.CvDocumentId,
+            request.CoverLetterDocumentId, entity, cancellationToken);
+        if (error is not null)
+            return (true, error);
+        entity.CandidateProfileId = request.CandidateProfileId;
+        entity.CvDocumentId = request.CvDocumentId;
+        entity.CoverLetterDocumentId = request.CoverLetterDocumentId;
         entity.StatusCode = request.StatusCode;
         entity.SubmittedAt = request.SubmittedAt?.ToUniversalTime();
         entity.ChannelCode = request.ChannelCode;
@@ -85,6 +99,22 @@ public class ApplicationService(ProspectionCrmDbContext dbContext, ICurrentWorks
         return true;
     }
 
+    private async Task<string?> ValidateReferencesAsync(Guid workspaceId, Guid? candidateProfileId, Guid? cvDocumentId,
+        Guid? coverLetterDocumentId, Application? existing, CancellationToken cancellationToken)
+    {
+        var error = await ProfessionalReferenceValidation.ProfileAsync(dbContext, workspaceId, candidateProfileId,
+            existing is null || candidateProfileId != existing.CandidateProfileId, cancellationToken);
+        if (error is not null)
+            return error;
+        error = await ProfessionalReferenceValidation.DocumentAsync(dbContext, workspaceId, cvDocumentId,
+            "cv", existing is null || cvDocumentId != existing.CvDocumentId, "CvDocumentId", cancellationToken);
+        if (error is not null)
+            return error;
+        return await ProfessionalReferenceValidation.DocumentAsync(dbContext, workspaceId, coverLetterDocumentId,
+            "cover-letter", existing is null || coverLetterDocumentId != existing.CoverLetterDocumentId,
+            "CoverLetterDocumentId", cancellationToken);
+    }
+
     private static string? Validate(string statusCode)
     {
         if (statusCode is not ("draft" or "prepared" or "submitted" or "acknowledged" or "accepted" or "rejected" or "withdrawn"))
@@ -96,6 +126,9 @@ public class ApplicationService(ProspectionCrmDbContext dbContext, ICurrentWorks
     {
         Id = entity.Id,
         OpportunityId = entity.OpportunityId,
+        CandidateProfileId = entity.CandidateProfileId,
+        CvDocumentId = entity.CvDocumentId,
+        CoverLetterDocumentId = entity.CoverLetterDocumentId,
         StatusCode = entity.StatusCode,
         SubmittedAt = entity.SubmittedAt,
         ChannelCode = entity.ChannelCode,

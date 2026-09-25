@@ -12,4 +12,10 @@ public class Application
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public Opportunity Opportunity { get; set; } = null!;
+    public Guid? CandidateProfileId { get; set; }
+    public CandidateProfile? CandidateProfile { get; set; }
+    public Guid? CvDocumentId { get; set; }
+    public Document? CvDocument { get; set; }
+    public Guid? CoverLetterDocumentId { get; set; }
+    public Document? CoverLetterDocument { get; set; }
 }

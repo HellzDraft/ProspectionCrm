@@ -22,4 +22,5 @@ public class CreateProposalRequest
 
     [MaxLength(10000)]
     public string? Notes { get; set; }
+    public Guid? DocumentId { get; set; }
 }

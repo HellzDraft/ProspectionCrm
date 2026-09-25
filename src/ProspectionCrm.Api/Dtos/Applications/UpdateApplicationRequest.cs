@@ -15,4 +15,7 @@ public class UpdateApplicationRequest
 
     [MaxLength(10000)]
     public string? Notes { get; set; }
+    public Guid? CandidateProfileId { get; set; }
+    public Guid? CvDocumentId { get; set; }
+    public Guid? CoverLetterDocumentId { get; set; }
 }

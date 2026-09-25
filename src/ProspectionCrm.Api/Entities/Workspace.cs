@@ -21,4 +21,10 @@ public class Workspace
     public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
     public ICollection<EmailMessage> EmailMessages { get; set; } = new List<EmailMessage>();
     public ICollection<CalendarEvent> CalendarEvents { get; set; } = new List<CalendarEvent>();
+    public ICollection<Document> Documents { get; set; } = new List<Document>();
+    public ICollection<CandidateProfile> CandidateProfiles { get; set; } = new List<CandidateProfile>();
+    public ICollection<Experience> Experiences { get; set; } = new List<Experience>();
+    public ICollection<Education> Educations { get; set; } = new List<Education>();
+    public ICollection<Project> Projects { get; set; } = new List<Project>();
+    public ICollection<Skill> Skills { get; set; } = new List<Skill>();
 }

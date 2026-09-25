@@ -9,6 +9,9 @@ public class ProposalConfiguration : IEntityTypeConfiguration<Proposal>
     public void Configure(EntityTypeBuilder<Proposal> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasOne(x => x.Document).WithMany()
+            .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.DocumentId);
         builder.Property(x => x.StatusCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.CurrencyCode).HasMaxLength(3);
         builder.Property(x => x.RateTypeCode).HasMaxLength(50);

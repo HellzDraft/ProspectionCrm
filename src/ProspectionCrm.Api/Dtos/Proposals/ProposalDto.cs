@@ -13,4 +13,5 @@ public class ProposalDto
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    public Guid? DocumentId { get; set; }
 }

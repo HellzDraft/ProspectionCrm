@@ -41,9 +41,14 @@ public class ProposalService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
             request.RateTypeCode, request.SentAt, request.ValidUntil);
         if (error is not null)
             return (true, null, error);
+        error = await ProfessionalReferenceValidation.DocumentAsync(dbContext, workspaceId, request.DocumentId,
+            "proposal", true, nameof(request.DocumentId), cancellationToken);
+        if (error is not null)
+            return (true, null, error);
         var entity = new Proposal
         {
             OpportunityId = opportunityId,
+            DocumentId = request.DocumentId,
             StatusCode = request.StatusCode,
             Amount = request.Amount,
             CurrencyCode = request.CurrencyCode,
@@ -69,6 +74,11 @@ public class ProposalService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
             request.RateTypeCode, request.SentAt, request.ValidUntil);
         if (error is not null)
             return (true, error);
+        error = await ProfessionalReferenceValidation.DocumentAsync(dbContext, workspaceId, request.DocumentId,
+            "proposal", request.DocumentId != entity.DocumentId, nameof(request.DocumentId), cancellationToken);
+        if (error is not null)
+            return (true, error);
+        entity.DocumentId = request.DocumentId;
         entity.StatusCode = request.StatusCode;
         entity.Amount = request.Amount;
         entity.CurrencyCode = request.CurrencyCode;
@@ -115,6 +125,7 @@ public class ProposalService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
     {
         Id = entity.Id,
         OpportunityId = entity.OpportunityId,
+        DocumentId = entity.DocumentId,
         StatusCode = entity.StatusCode,
         Amount = entity.Amount,
         CurrencyCode = entity.CurrencyCode,

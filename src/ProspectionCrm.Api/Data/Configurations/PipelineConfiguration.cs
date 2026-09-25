@@ -9,6 +9,9 @@ public class PipelineConfiguration : IEntityTypeConfiguration<Pipeline>
     public void Configure(EntityTypeBuilder<Pipeline> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasOne(x => x.PreferredCandidateProfile).WithMany()
+            .HasForeignKey(x => x.PreferredCandidateProfileId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(x => x.PreferredCandidateProfileId);
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Description).HasMaxLength(2000);
         builder.Property(x => x.TypeCode).IsRequired().HasMaxLength(50);

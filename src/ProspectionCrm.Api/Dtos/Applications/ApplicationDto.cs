@@ -10,4 +10,7 @@ public class ApplicationDto
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    public Guid? CandidateProfileId { get; set; }
+    public Guid? CvDocumentId { get; set; }
+    public Guid? CoverLetterDocumentId { get; set; }
 }

@@ -15,4 +15,6 @@ public class Proposal
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public Opportunity Opportunity { get; set; } = null!;
+    public Guid? DocumentId { get; set; }
+    public Document? Document { get; set; }
 }

@@ -20,6 +20,7 @@ public class PipelineService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
             Name = pipeline.Name,
             Description = pipeline.Description,
             TypeCode = pipeline.TypeCode,
+            PreferredCandidateProfileId = pipeline.PreferredCandidateProfileId,
             CreatedAt = pipeline.CreatedAt,
             UpdatedAt = pipeline.UpdatedAt,
             ArchivedAt = pipeline.ArchivedAt,
