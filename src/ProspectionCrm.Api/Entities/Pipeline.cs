@@ -17,4 +17,6 @@ public class Pipeline
     public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
     public Guid? PreferredCandidateProfileId { get; set; }
     public CandidateProfile? PreferredCandidateProfile { get; set; }
+    public ICollection<ScoringRule> ScoringRules { get; set; } = [];
+    public ICollection<AutomationRule> AutomationRules { get; set; } = [];
 }

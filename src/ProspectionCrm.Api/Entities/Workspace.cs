@@ -27,4 +27,10 @@ public class Workspace
     public ICollection<Education> Educations { get; set; } = new List<Education>();
     public ICollection<Project> Projects { get; set; } = new List<Project>();
     public ICollection<Skill> Skills { get; set; } = new List<Skill>();
+    public ICollection<ScoringRule> ScoringRules { get; set; } = [];
+    public ICollection<AutomationRule> AutomationRules { get; set; } = [];
+    public ICollection<AutomationExecution> AutomationExecutions { get; set; } = [];
+    public ICollection<AiModelConfiguration> AiModelConfigurations { get; set; } = [];
+    public ICollection<AiPromptTemplate> AiPromptTemplates { get; set; } = [];
+    public ICollection<ActivityEntry> ActivityEntries { get; set; } = [];
 }

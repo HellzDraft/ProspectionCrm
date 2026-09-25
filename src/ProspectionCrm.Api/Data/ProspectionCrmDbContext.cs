@@ -39,6 +39,14 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<CandidateProfileSkill> CandidateProfileSkills => Set<CandidateProfileSkill>();
     public DbSet<ProjectSkill> ProjectSkills => Set<ProjectSkill>();
 
+    public DbSet<ScoringRule> ScoringRules => Set<ScoringRule>();
+    public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
+    public DbSet<AutomationExecution> AutomationExecutions => Set<AutomationExecution>();
+    public DbSet<AiModelConfiguration> AiModelConfigurations => Set<AiModelConfiguration>();
+    public DbSet<AiPromptTemplate> AiPromptTemplates => Set<AiPromptTemplate>();
+    public DbSet<AiPromptVersion> AiPromptVersions => Set<AiPromptVersion>();
+    public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ProspectionCrmDbContext).Assembly);
 }

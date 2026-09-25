@@ -31,6 +31,12 @@ builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IEducationService, EducationService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<ISkillService, SkillService>();
+builder.Services.AddScoped<IScoringRuleService, ScoringRuleService>();
+builder.Services.AddScoped<IAutomationRuleService, AutomationRuleService>();
+builder.Services.AddScoped<IAutomationExecutionService, AutomationExecutionService>();
+builder.Services.AddScoped<IAiModelConfigurationService, AiModelConfigurationService>();
+builder.Services.AddScoped<IAiPromptTemplateService, AiPromptTemplateService>();
+builder.Services.AddScoped<IActivityEntryService, ActivityEntryService>();
 builder.Services.AddOpenApi();
 
 if (builder.Environment.IsDevelopment())
