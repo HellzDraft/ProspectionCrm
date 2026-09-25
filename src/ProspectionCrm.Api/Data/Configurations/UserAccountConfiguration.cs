@@ -11,6 +11,7 @@ public class UserAccountConfiguration : IEntityTypeConfiguration<UserAccount>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Email).IsRequired().HasMaxLength(254);
         builder.Property(x => x.DisplayName).HasMaxLength(200);
-        builder.HasIndex(x => x.Email).IsUnique();
+        builder.HasIndex(x => x.Email).IsUnique()
+            .HasDatabaseName("UX_UserAccounts_Email");
     }
 }

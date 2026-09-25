@@ -17,6 +17,7 @@ public class ExperienceConfiguration : IEntityTypeConfiguration<Experience>
         builder.Property(x => x.EndedOn).HasColumnType("date");
         builder.HasOne(x => x.Workspace).WithMany(x => x.Experiences)
             .HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.WorkspaceId);
         builder.ToTable("Experiences", table =>
         {
             table.HasCheckConstraint("CK_Experiences_EndedOn", "\"EndedOn\" IS NULL OR \"StartedOn\" IS NULL OR \"EndedOn\" >= \"StartedOn\"");

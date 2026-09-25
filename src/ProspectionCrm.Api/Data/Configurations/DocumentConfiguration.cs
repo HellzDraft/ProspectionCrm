@@ -19,7 +19,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.HasIndex(x => new { x.WorkspaceId, x.ArchivedAt });
         builder.HasIndex(x => new { x.WorkspaceId, x.KindCode });
         builder.HasIndex(x => new { x.WorkspaceId, x.Sha256 });
-        builder.HasIndex(x => new { x.WorkspaceId, x.StorageKey }).IsUnique();
+        builder.HasIndex(x => new { x.WorkspaceId, x.StorageKey }).IsUnique()
+            .HasDatabaseName("UX_Documents_Workspace_StorageKey");
         builder.ToTable("Documents", table =>
         {
             table.HasCheckConstraint("CK_Documents_SizeBytes", "\"SizeBytes\" >= 0");

@@ -13,6 +13,7 @@ public class ProjectSkillConfiguration : IEntityTypeConfiguration<ProjectSkill>
             .HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Skill).WithMany()
             .HasForeignKey(x => x.SkillId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(x => new { x.ProjectId, x.SkillId }).IsUnique();
+        builder.HasIndex(x => new { x.ProjectId, x.SkillId }).IsUnique()
+            .HasDatabaseName("UX_ProjectSkills_Project_Skill");
     }
 }

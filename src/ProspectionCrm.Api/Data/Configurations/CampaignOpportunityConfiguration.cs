@@ -14,6 +14,7 @@ public class CampaignOpportunityConfiguration : IEntityTypeConfiguration<Campaig
         builder.HasOne(x => x.Opportunity).WithMany(x => x.CampaignOpportunities)
             .HasForeignKey(x => x.OpportunityId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(x => x.OpportunityId);
-        builder.HasIndex(x => new { x.CampaignId, x.OpportunityId }).IsUnique();
+        builder.HasIndex(x => new { x.CampaignId, x.OpportunityId }).IsUnique()
+            .HasDatabaseName("UX_CampaignOpportunities_Campaign_Opportunity");
     }
 }

@@ -26,8 +26,10 @@ public class OpportunitySourceConfiguration : IEntityTypeConfiguration<Opportuni
         builder.HasIndex(x => x.SourceExecutionId);
         builder.HasIndex(x => x.SourceUrl);
         builder.HasIndex(x => new { x.SourceConfigurationId, x.ExternalId }).IsUnique()
+            .HasDatabaseName("UX_OpportunitySources_SourceConfiguration_ExternalId")
             .HasFilter("\"SourceConfigurationId\" IS NOT NULL AND \"ExternalId\" IS NOT NULL");
         builder.HasIndex(x => new { x.OpportunityId, x.SourceUrl }).IsUnique()
+            .HasDatabaseName("UX_OpportunitySources_Opportunity_SourceUrl")
             .HasFilter("\"SourceUrl\" IS NOT NULL");
         builder.ToTable("OpportunitySources", table =>
         {

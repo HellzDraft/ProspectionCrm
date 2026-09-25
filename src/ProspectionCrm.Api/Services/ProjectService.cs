@@ -103,7 +103,7 @@ public class ProjectService(ProspectionCrmDbContext dbContext, ICurrentWorkspace
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
-        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_ProjectSkills_ProjectId_SkillId" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UX_ProjectSkills_Project_Skill" })
         {
             dbContext.Entry(link).State = EntityState.Detached;
         }

@@ -78,7 +78,7 @@ public class SkillService(ProspectionCrmDbContext dbContext, ICurrentWorkspacePr
             return null;
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
-        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Skills_WorkspaceId_Name" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UX_Skills_Workspace_Name" })
         {
             dbContext.Entry(entity).State = EntityState.Detached;
             return "A skill with this name already exists in the current workspace.";

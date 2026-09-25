@@ -101,7 +101,7 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
 
     private async Task<string?> ValidateAsync(Guid workspaceId, Guid? pipelineId, Guid? sourceConfigurationId, string criteriaJson, bool requireActivePipeline, bool requireActiveSource, CancellationToken cancellationToken)
     {
-        var error = AcquisitionValidation.ValidateJsonObject(criteriaJson, "CriteriaJson", required: true);
+        var error = JsonObjectValidation.Validate(criteriaJson, "CriteriaJson", required: true);
         if (error is not null)
             return error;
         if (!pipelineId.HasValue || !await dbContext.Pipelines.AnyAsync(x => x.Id == pipelineId.Value

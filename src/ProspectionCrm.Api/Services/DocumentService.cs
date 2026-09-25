@@ -52,7 +52,7 @@ public class DocumentService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
-        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Documents_WorkspaceId_StorageKey" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UX_Documents_Workspace_StorageKey" })
         {
             dbContext.Entry(document).State = EntityState.Detached;
             return (null, "This storage key is already used by a document in the current workspace.");

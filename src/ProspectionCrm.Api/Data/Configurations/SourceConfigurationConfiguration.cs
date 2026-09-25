@@ -17,5 +17,7 @@ public class SourceConfigurationConfiguration : IEntityTypeConfiguration<SourceC
             .HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.WorkspaceId, x.ArchivedAt });
         builder.HasIndex(x => new { x.WorkspaceId, x.SourceTypeCode });
+        builder.ToTable("SourceConfigurations", table => table.HasCheckConstraint(
+            "CK_SourceConfigurations_ConfigurationJson", "\"ConfigurationJson\" IS NULL OR jsonb_typeof(\"ConfigurationJson\") = 'object'"));
     }
 }

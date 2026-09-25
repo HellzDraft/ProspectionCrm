@@ -14,7 +14,8 @@ public class PipelineStageConfiguration : IEntityTypeConfiguration<PipelineStage
         builder.Property(x => x.CategoryCode).IsRequired().HasMaxLength(50);
         builder.HasOne(x => x.Pipeline).WithMany(x => x.Stages)
             .HasForeignKey(x => x.PipelineId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(x => new { x.PipelineId, x.SortOrder }).IsUnique();
+        builder.HasIndex(x => new { x.PipelineId, x.SortOrder }).IsUnique()
+            .HasDatabaseName("UX_PipelineStages_Pipeline_SortOrder");
         builder.ToTable("PipelineStages", table =>
         {
             table.HasCheckConstraint("CK_PipelineStages_SortOrder", "\"SortOrder\" >= 0");

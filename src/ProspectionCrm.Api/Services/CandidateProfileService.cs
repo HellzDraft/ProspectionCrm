@@ -133,7 +133,7 @@ public class CandidateProfileService(ProspectionCrmDbContext dbContext, ICurrent
             return null;
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
-        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_CandidateProfiles_WorkspaceId" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UX_CandidateProfiles_ActiveDefault" })
         {
             await transaction.RollbackAsync(cancellationToken);
             return "The default candidate profile changed concurrently. Please retry.";

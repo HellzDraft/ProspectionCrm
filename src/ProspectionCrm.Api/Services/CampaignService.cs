@@ -133,7 +133,7 @@ public class CampaignService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
         {
             SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "IX_CampaignOpportunities_CampaignId_OpportunityId"
+            ConstraintName: "UX_CampaignOpportunities_Campaign_Opportunity"
         })
         {
             // Concurrent identical additions have the same successful, idempotent outcome.

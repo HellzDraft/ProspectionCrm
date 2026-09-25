@@ -25,6 +25,7 @@ public class CalendarEventConfiguration : IEntityTypeConfiguration<CalendarEvent
         builder.HasIndex(x => x.OpportunityId);
         builder.HasIndex(x => x.ContactId);
         builder.HasIndex(x => new { x.WorkspaceId, x.ProviderCode, x.ExternalEventId }).IsUnique()
+            .HasDatabaseName("UX_CalendarEvents_Workspace_Provider_ExternalEvent")
             .HasFilter("\"ExternalEventId\" IS NOT NULL");
         builder.ToTable("CalendarEvents", table =>
         {

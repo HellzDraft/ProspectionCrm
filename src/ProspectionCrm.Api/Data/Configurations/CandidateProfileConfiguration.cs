@@ -17,6 +17,7 @@ public class CandidateProfileConfiguration : IEntityTypeConfiguration<CandidateP
             .HasForeignKey(x => x.PrimaryCvDocumentId).OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(x => x.PrimaryCvDocumentId);
         builder.HasIndex(x => x.WorkspaceId).IsUnique()
+            .HasDatabaseName("UX_CandidateProfiles_ActiveDefault")
             .HasFilter("\"IsDefault\" = true AND \"ArchivedAt\" IS NULL");
         builder.HasIndex(x => new { x.WorkspaceId, x.ArchivedAt });
         builder.HasIndex(x => new { x.WorkspaceId, x.Name });

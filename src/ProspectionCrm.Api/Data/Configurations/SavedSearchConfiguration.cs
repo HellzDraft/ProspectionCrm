@@ -21,5 +21,7 @@ public class SavedSearchConfiguration : IEntityTypeConfiguration<SavedSearch>
         builder.HasIndex(x => new { x.WorkspaceId, x.ArchivedAt });
         builder.HasIndex(x => x.PipelineId);
         builder.HasIndex(x => x.SourceConfigurationId);
+        builder.ToTable("SavedSearches", table => table.HasCheckConstraint(
+            "CK_SavedSearches_CriteriaJson", "jsonb_typeof(\"CriteriaJson\") = 'object'"));
     }
 }

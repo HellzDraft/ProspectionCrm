@@ -36,7 +36,7 @@ public class SourceConfigurationService(ProspectionCrmDbContext dbContext, ICurr
             Name = request.Name,
             SourceTypeCode = request.SourceTypeCode,
             BaseUrl = request.BaseUrl,
-            ConfigurationJson = string.IsNullOrWhiteSpace(request.ConfigurationJson) ? null : request.ConfigurationJson,
+            ConfigurationJson = JsonObjectValidation.NormalizeOptional(request.ConfigurationJson),
             Enabled = request.Enabled
         };
         dbContext.SourceConfigurations.Add(entity);
@@ -57,7 +57,7 @@ public class SourceConfigurationService(ProspectionCrmDbContext dbContext, ICurr
         entity.Name = request.Name;
         entity.SourceTypeCode = request.SourceTypeCode;
         entity.BaseUrl = request.BaseUrl;
-        entity.ConfigurationJson = string.IsNullOrWhiteSpace(request.ConfigurationJson) ? null : request.ConfigurationJson;
+        entity.ConfigurationJson = JsonObjectValidation.NormalizeOptional(request.ConfigurationJson);
         entity.Enabled = request.Enabled;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -93,7 +93,7 @@ public class SourceConfigurationService(ProspectionCrmDbContext dbContext, ICurr
 
     private static string? Validate(string? configurationJson)
     {
-        return AcquisitionValidation.ValidateJsonObject(configurationJson, "ConfigurationJson", required: false);
+        return JsonObjectValidation.Validate(configurationJson, "ConfigurationJson", required: false);
     }
 
     private static SourceConfigurationDto ToDto(SourceConfiguration entity) => new()

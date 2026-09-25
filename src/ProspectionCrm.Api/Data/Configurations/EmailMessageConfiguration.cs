@@ -32,6 +32,7 @@ public class EmailMessageConfiguration : IEntityTypeConfiguration<EmailMessage>
         builder.HasIndex(x => x.CompanyId);
         builder.HasIndex(x => x.ContactId);
         builder.HasIndex(x => new { x.WorkspaceId, x.ProviderCode, x.ExternalMessageId }).IsUnique()
+            .HasDatabaseName("UX_EmailMessages_Workspace_Provider_ExternalMessage")
             .HasFilter("\"ExternalMessageId\" IS NOT NULL");
         builder.ToTable("EmailMessages", table =>
         {

@@ -172,13 +172,13 @@ public class OpportunitySourceService(ProspectionCrmDbContext dbContext, ICurren
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
         {
             SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "IX_OpportunitySources_SourceConfigurationId_ExternalId" or "IX_OpportunitySources_OpportunityId_SourceUrl"
+            ConstraintName: "UX_OpportunitySources_SourceConfiguration_ExternalId" or "UX_OpportunitySources_Opportunity_SourceUrl"
         })
         {
             // A concurrent request may insert a duplicate after the explicit precheck.
             dbContext.Entry(source).State = EntityState.Detached;
             var postgresException = (PostgresException)exception.InnerException;
-            return postgresException.ConstraintName == "IX_OpportunitySources_SourceConfigurationId_ExternalId"
+            return postgresException.ConstraintName == "UX_OpportunitySources_SourceConfiguration_ExternalId"
                 ? ExternalIdConflict : SourceUrlConflict;
         }
     }

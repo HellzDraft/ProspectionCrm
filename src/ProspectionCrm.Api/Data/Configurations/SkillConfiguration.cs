@@ -13,7 +13,8 @@ public class SkillConfiguration : IEntityTypeConfiguration<Skill>
         builder.Property(x => x.CategoryCode).HasMaxLength(50);
         builder.HasOne(x => x.Workspace).WithMany(x => x.Skills)
             .HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(x => new { x.WorkspaceId, x.Name }).IsUnique();
+        builder.HasIndex(x => new { x.WorkspaceId, x.Name }).IsUnique()
+            .HasDatabaseName("UX_Skills_Workspace_Name");
         builder.HasIndex(x => new { x.WorkspaceId, x.CategoryCode });
     }
 }
