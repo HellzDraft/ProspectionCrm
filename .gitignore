@@ -5,6 +5,23 @@
 
 # dotenv files
 .env
+.env.*
+!.env.example
+
+# Local configuration and secrets (use .NET User Secrets for development)
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.p12
+*.pem
+*.key
+
+# Local CRM data and database backups (root only; keep source Data/ tracked)
+/data/
+/uploads/
+/backups/
+*.dump
+*.backup
 
 # User-specific files
 *.rsuser
