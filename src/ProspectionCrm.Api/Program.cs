@@ -1,8 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Services;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSerilog((services, configuration) => configuration
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.WithProperty("Environment", builder.Environment.EnvironmentName));
 
 builder.Services.AddDbContext<ProspectionCrmDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")
@@ -49,6 +55,8 @@ if (builder.Environment.IsDevelopment())
 }
 
 var app = builder.Build();
+
+app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
 {
