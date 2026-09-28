@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="src/ProspectionCrm.Api/ProspectionCrm.Api.csproj" />
   <Project Path="src/ProspectionCrm.Blazor/ProspectionCrm.Blazor.csproj" />
+  <Project Path="tests/ProspectionCrm.Api.Tests/ProspectionCrm.Api.Tests.csproj" />
 </Solution>

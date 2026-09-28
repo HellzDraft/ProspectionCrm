@@ -18,6 +18,8 @@ secrets.json
 
 # Local CRM data and database backups (root only; keep source Data/ tracked)
 /data/
+# FileStorage is relative to the API content root; preserve EF Core Data/ sources.
+/src/ProspectionCrm.Api/[Dd]ata/files/
 /uploads/
 /backups/
 *.dump

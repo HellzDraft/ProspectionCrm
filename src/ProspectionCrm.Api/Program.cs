@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Services;
+using ProspectionCrm.Api.Storage;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,11 @@ builder.Services.AddDbContext<ProspectionCrmDbContext>(options =>
             "Configurez ConnectionStrings:DefaultConnection avec User Secrets ou une variable d'environnement.")));
 
 builder.Services.AddControllers();
+builder.Services.AddOptions<FileStorageOptions>()
+    .Bind(builder.Configuration.GetRequiredSection(FileStorageOptions.SectionName))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.RootPath), "FileStorage:RootPath is required.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();
 builder.Services.AddScoped<IOpportunityService, OpportunityService>();
