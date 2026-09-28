@@ -1,4 +1,7 @@
-# Infrastructure locale — Phase 3.2
+# Infrastructure locale
+
+Pour l'installation de l'API, les secrets, les migrations et les tests, commencer
+par le [README](../README.md). Cette page détaille les opérations Docker locales.
 
 Exécuter les commandes depuis la racine du dépôt, avec Docker démarré et
 un fichier `.env` local configuré à partir de `.env.example`.
@@ -80,8 +83,13 @@ docker compose --profile integrations down --volumes
 **DESTRUCTIF pour n8n uniquement :** comptes, credentials, workflows et clé
 de chiffrement n8n sont perdus. PostgreSQL reste intact et peut rester démarré.
 Dans PowerShell, récupérer le volume réellement monté avant de retirer le
-conteneur (si nécessaire, créer celui-ci avec `docker compose --profile
-integrations create n8n`) :
+conteneur. Si celui-ci est absent, le créer d'abord :
+
+```powershell
+docker compose --profile integrations create n8n
+```
+
+Puis identifier et vérifier le volume avant la suppression :
 
 ```powershell
 $n8nContainer = docker compose --profile integrations ps -a -q n8n
@@ -97,3 +105,34 @@ docker compose --profile integrations up -d n8n
 ```
 
 Ne jamais supprimer `postgres_data` pour réinitialiser n8n.
+
+## Reconstruire sans toucher aux données de développement
+
+Un test sur une base vierge doit utiliser un autre projet Compose (`-p`), des
+volumes distincts et un port hôte libre. Le seul changement de nom de projet ne
+suffit pas : le port `5432` du fichier principal resterait en conflit.
+
+Pour remplacer ce port avec un fichier de surcharge temporaire, Compose 2.24.4+
+permet `ports: !override` (une fusion ordinaire ajouterait un port). Par exemple :
+
+```yaml
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:0:5432"
+```
+
+Le port `0` demande un port libre à Docker ; le récupérer avec `docker compose`
+et les mêmes options `-p` / `-f`, suivi de `port postgres 5432`. Utiliser des
+identifiants temporaires via un `--env-file` extérieur au dépôt et injecter la
+connexion isolée dans `ConnectionStrings__DefaultConnection` pour EF et l'API.
+Ne pas modifier les User Secrets ni le `.env` de développement.
+
+Vérifier la configuration résolue et les noms des volumes avant le démarrage.
+Après validation, arrêter l'API temporaire et PostgreSQL temporaire. Le nettoyage
+avec `down --volumes` est **destructif pour le projet ciblé** : réutiliser exactement
+le nom du projet temporaire et ses fichiers Compose, après contrôle de ses volumes.
+Ne jamais exécuter cette commande sans ce ciblage pour nettoyer un test isolé.
+
+Une base migrée est vide de données métier ; la limite liée au workspace actif
+est décrite dans le README. Aucun jeu de validation existant n'est recréé ici.
