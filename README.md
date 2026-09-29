@@ -203,6 +203,9 @@ les écritures concurrentes sur ces deux tables, sans bloquer les lectures ordin
 Il est libéré au commit ou au rollback, y compris en cas d'erreur ou d'annulation.
 Il reste local au bootstrap et ne modifie ni le modèle ni les migrations.
 
+Le contrat CRUD Pipeline et ses règles d'archivage, de visibilité et de défaut
+sont décrits dans [API Pipeline V1](docs/pipelines-v1.md).
+
 ## Docker et n8n facultatif
 
 ```powershell

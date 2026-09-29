@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProspectionCrm.Api.Data;
@@ -11,9 +12,11 @@ using ProspectionCrm.Api.Data;
 namespace ProspectionCrm.Api.Data.Migrations
 {
     [DbContext(typeof(ProspectionCrmDbContext))]
-    partial class ProspectionCrmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260929150147_Phase42PipelineLifecycleAndDefault")]
+    partial class Phase42PipelineLifecycleAndDefault
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

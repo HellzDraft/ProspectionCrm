@@ -4,6 +4,8 @@ public class Workspace
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid OwnerUserId { get; set; }
+    public Guid? DefaultPipelineId { get; set; }
+    public Pipeline? DefaultPipeline { get; set; }
     public required string Name { get; set; }
     public required string TimeZoneId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
