@@ -134,5 +134,8 @@ avec `down --volumes` est **destructif pour le projet ciblé** : réutiliser exa
 le nom du projet temporaire et ses fichiers Compose, après contrôle de ses volumes.
 Ne jamais exécuter cette commande sans ce ciblage pour nettoyer un test isolé.
 
-Une base migrée est vide de données métier ; la limite liée au workspace actif
-est décrite dans le README. Aucun jeu de validation existant n'est recréé ici.
+Une base migrée est vide de données métier. Le bootstrap explicite
+`POST /api/setup/bootstrap`, décrit dans le README, crée uniquement le propriétaire
+local V1 et son workspace actif. Aucun jeu de validation existant n'est recréé ici.
+Les tests automatisés du bootstrap utilisent Testcontainers et leurs propres
+instances PostgreSQL jetables, sans passer par le Compose de développement.

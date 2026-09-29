@@ -23,6 +23,7 @@ builder.Services.AddOptions<FileStorageOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
+builder.Services.AddScoped<IBootstrapService, BootstrapService>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();
 builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
@@ -81,3 +82,5 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;
