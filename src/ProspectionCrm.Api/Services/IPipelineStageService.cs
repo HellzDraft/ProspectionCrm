@@ -10,6 +10,7 @@ public interface IPipelineStageService
     Task<PipelineStageWriteResult> UpdateAsync(Guid pipelineId, Guid stageId, PipelineStageWriteRequest request, CancellationToken cancellationToken);
     Task<PipelineStageWriteResult> ArchiveAsync(Guid pipelineId, Guid stageId, CancellationToken cancellationToken);
     Task<PipelineStageWriteResult> RestoreAsync(Guid pipelineId, Guid stageId, CancellationToken cancellationToken);
+    Task<PipelineStageWriteResult> ReorderAsync(Guid pipelineId, PipelineStageOrderRequest request, CancellationToken cancellationToken);
 }
 
 // Local write outcome: distinguishes input validation from a conflicting lifecycle state.

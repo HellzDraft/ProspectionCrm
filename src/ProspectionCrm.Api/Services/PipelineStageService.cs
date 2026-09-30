@@ -120,6 +120,68 @@ public class PipelineStageService(ProspectionCrmDbContext dbContext, ICurrentWor
         return new(PipelineStageWriteStatus.Succeeded);
     }
 
+    public async Task<PipelineStageWriteResult> ReorderAsync(
+        Guid pipelineId, PipelineStageOrderRequest request, CancellationToken cancellationToken)
+    {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var pipeline = await LockPipelineAsync(workspaceId, pipelineId, cancellationToken);
+        if (pipeline is null)
+            return new(PipelineStageWriteStatus.NotFound);
+        if (pipeline.ArchivedAt is not null)
+            return ParentArchived();
+
+        // Read and validate only after acquiring the same parent lock as all other stage writes.
+        var stages = await dbContext.PipelineStages.Where(x => x.PipelineId == pipelineId)
+            .OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+        var active = stages.Where(x => x.ArchivedAt is null).ToArray();
+        var stageIds = request.StageIds;
+        if (stageIds is null || stageIds.Length != active.Length
+            || stageIds.Distinct().Count() != active.Length
+            || !stageIds.ToHashSet().SetEquals(active.Select(x => x.Id)))
+            return new(PipelineStageWriteStatus.InvalidInput,
+                Error: "StageIds must contain each active stage of this pipeline exactly once.");
+
+        if (stageIds.SequenceEqual(active.Select(x => x.Id)))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new(PipelineStageWriteStatus.Succeeded);
+        }
+
+        var positions = active.Select(x => x.SortOrder).ToArray();
+        var byId = active.ToDictionary(x => x.Id);
+        var occupied = stages.Select(x => x.SortOrder).ToHashSet();
+        var temporary = new int[active.Length];
+        long candidate = 0;
+        // Choose the lowest unused nonnegative positions, excluding active AND archived slots.
+        // The monotonic long cursor cannot overflow int; plan all slots before any mutation.
+        for (var i = 0; i < temporary.Length; i++)
+        {
+            while (candidate <= int.MaxValue && occupied.Contains((int)candidate))
+                candidate++;
+            if (candidate > int.MaxValue)
+                return new(PipelineStageWriteStatus.Conflict, Error: "Insufficient temporary SortOrder positions.");
+            temporary[i] = (int)candidate++;
+        }
+
+        for (var i = 0; i < active.Length; i++)
+            active[i].SortOrder = temporary[i];
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Every final slot is now free. Only stages whose final position changes get a timestamp.
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < stageIds.Length; i++)
+        {
+            var stage = byId[stageIds[i]];
+            stage.SortOrder = positions[i];
+            if (stage.Id != active[i].Id)
+                stage.UpdatedAt = now;
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(PipelineStageWriteStatus.Succeeded);
+    }
+
     // The parent row serializes stage writes and conflicts with PipelineService's archive UPDATE.
     // ReadCommitted sees the preceding commit after waiting. No workspace lock is acquired here,
     // so this cannot invert PipelineService's workspace-then-pipeline lock order.

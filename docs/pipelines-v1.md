@@ -1,4 +1,4 @@
-# API Pipeline et PipelineStage — Phases 4.2 et 4.3
+# API Pipeline et PipelineStage — Phases 4.2 à 4.4
 
 Toutes les routes utilisent `ICurrentWorkspaceProvider` : exactement un workspace
 actif en V1. Un identifiant absent ou appartenant à un autre workspace renvoie 404.
@@ -120,10 +120,85 @@ nouvelle affectation exigent une étape et un parent actifs ; une Opportunity d�
 rattachée peut encore être modifiée en conservant son étape archivée ou son parent
 archivé. La catégorie ne déclenche aucune modification automatique d'Opportunity.
 
-La Phase 4.4 reste séparée : aucun réordonnancement ni endpoint associé. Aucun
+Le réordonnancement dispose du contrat distinct de Phase 4.4 décrit ci-dessous. Aucun
 catalogue/template d'étapes, clonage, import-export ou pipeline initial n'est ajouté.
 Le modèle persistant, ses configurations et son snapshot restent inchangés : aucune
 migration Phase 4.3, même vide, n'est nécessaire ni créée.
+
+## Réordonnancement des étapes actives — Phase 4.4
+
+`PUT /api/pipelines/{pipelineId}/stages/order` reçoit un `PipelineStageOrderRequest`
+contenant uniquement `stageIds`, tableau obligatoire de GUID dans l'ordre final voulu :
+
+```json
+{
+  "stageIds": [
+    "11111111-1111-1111-1111-111111111111",
+    "33333333-3333-3333-3333-333333333333",
+    "22222222-2222-2222-2222-222222222222"
+  ]
+}
+```
+
+Le client fournit exactement une fois chaque étape active du pipeline. Il ne fournit
+aucun `SortOrder` numérique. Une liste vide est valide uniquement s'il n'existe aucune
+étape active, y compris lorsque le pipeline ne contient que des archives. Un champ
+absent ou null est invalide. Les champs JSON supplémentaires sont ignorés selon la
+convention existante et ne peuvent imposer de position numérique.
+
+| Statut | Signification |
+| --- | --- |
+| 204 | Réordonnancement terminé, ou ordre déjà identique ; aucun corps |
+| 400 | Corps invalide, doublon, étape manquante, ID inconnu, archivé ou d'un autre pipeline/workspace |
+| 404 | Pipeline absent ou hors workspace courant |
+| 409 | Pipeline parent archivé, ou nombre insuffisant de positions temporaires libres |
+
+Les étapes archivées sont exclues de la permutation et ne subissent aucune écriture,
+y compris sur leurs timestamps. Les étapes actives se répartissent uniquement les
+positions actives existantes, triées par valeur croissante. Les trous restent des
+trous et les positions archivées restent occupées. Par exemple, avec A en 0, une
+archive en 1, B en 2 et C en 7, la permutation `[C, A, B]` place C en 0, A en 2,
+B en 7, sans toucher à l'archive en 1.
+
+Le service utilise le même verrou PostgreSQL `FOR UPDATE` sur le pipeline parent
+que les écritures de Phase 4.3, dans une transaction ReadCommitted. Les étapes sont
+relues et la permutation validée **après acquisition du verrou**. Deux réordonnancements
+sont sérialisés. Si une création termine avant un réordonnancement qui omet la nouvelle
+étape, celui-ci renvoie 400 ; si le réordonnancement termine d'abord, la création ajoute
+son étape au maximum global plus un. Aucun verrou supplémentaire de workspace n'est
+pris : les autres pipelines peuvent avancer indépendamment.
+
+L'index unique existant `(PipelineId, SortOrder)` et la contrainte `SortOrder >= 0`
+restent inchangés. Pour éviter toute collision intermédiaire, le service :
+
+1. Mémorise les positions actives et toutes les positions occupées, archives comprises.
+2. Sélectionne autant de positions temporaires que d'étapes actives : les plus petits
+   entiers non négatifs inoccupés, en parcourant les candidats dans l'ordre croissant.
+3. Affecte ces positions aux étapes actives et effectue une première sauvegarde.
+4. Affecte les positions actives initiales selon la permutation et sauvegarde à nouveau.
+5. Commit la transaction, en conservant le verrou jusqu'à cette étape.
+
+Les positions temporaires sont distinctes et disjointes de toutes les positions
+initiales ; après la première sauvegarde, toutes les positions finales sont libres.
+Le curseur de recherche est un `long`, contrôlé avant conversion en `int` : aucun
+offset fixe, addition au maximum ou dépassement d'entier. Même une position initiale
+égale à `int.MaxValue` peut être réordonnée en utilisant les espaces libres plus bas.
+Si l'espace non négatif des `int` ne fournit pas assez de positions temporaires,
+l'opération renvoie 409 avant toute mutation. Une erreur après la première sauvegarde
+annule toute la transaction ; les positions temporaires ne sont jamais commitées.
+
+Un ordre identique ne modifie aucun champ ni timestamp. Lors d'un changement, seules
+les étapes dont la position finale change reçoivent un nouvel `UpdatedAt`. Aucune
+Opportunity n'est écrite : son `PipelineStageId`, son archivage et tous ses autres
+champs restent identiques. `OpportunityService` conserve ses règles d'affectation aux
+étapes/parents actifs et n'est pas modifié.
+
+Les invariants de Phase 4.3 restent applicables : création en fin, archive sans
+déplacement, restauration à la position conservée, modification d'archive interdite
+et aucune écriture d'étape lorsque le parent est archivé. Aucun réordonnancement
+partiel, déplacement entre pipelines ou endpoint montée/descente n'est ajouté.
+Les sujets des Phases 4.5, 4.6 et 5 restent hors périmètre. Aucune modification du
+modèle persistant ni migration Phase 4.4 n'est nécessaire.
 
 ## Migration et tests
 
@@ -145,6 +220,13 @@ de vraies transactions et connexions PostgreSQL : deux créations mises en atten
 sur le parent, un archivage concurrent du parent et une création dans un autre
 pipeline pendant que le premier est verrouillé. L'attente est observée via
 `pg_stat_activity`, avec délai maximal, avant de libérer les verrous.
+
+`PipelineStageOrderTests` complète cette couverture : permutations, ordre identique,
+archives et trous, entrées invalides, isolation, bornes `int.MaxValue`, rollback de
+la phase temporaire, préservation de tous les champs Opportunity et règles d'archives.
+Les tests PostgreSQL réels couvrent deux réordonnancements concurrents, création et
+réordonnancement concurrents, revalidation après création/archivage pendant l'attente
+du verrou, et réordonnancement indépendant dans un autre pipeline.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release

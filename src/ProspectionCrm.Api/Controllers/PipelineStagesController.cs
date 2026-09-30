@@ -63,6 +63,15 @@ public class PipelineStagesController(IPipelineStageService stageService) : Cont
     public async Task<IActionResult> Restore(Guid pipelineId, Guid stageId, CancellationToken cancellationToken)
         => WriteResult(await stageService.RestoreAsync(pipelineId, stageId, cancellationToken));
 
+    [HttpPut("order")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Reorder(
+        Guid pipelineId, PipelineStageOrderRequest request, CancellationToken cancellationToken)
+        => WriteResult(await stageService.ReorderAsync(pipelineId, request, cancellationToken));
+
     private IActionResult WriteResult(PipelineStageWriteResult result) => result.Status switch
     {
         PipelineStageWriteStatus.Succeeded => NoContent(),
