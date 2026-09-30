@@ -1,4 +1,4 @@
-# API Pipeline — Phase 4.2
+# API Pipeline et PipelineStage — Phases 4.2 et 4.3
 
 Toutes les routes utilisent `ICurrentWorkspaceProvider` : exactement un workspace
 actif en V1. Un identifiant absent ou appartenant à un autre workspace renvoie 404.
@@ -21,7 +21,7 @@ aussi ses étapes archivées. Sur la liste, `includeArchived=true` continue de
 contrôler l'inclusion des pipelines archivés et de leurs étapes archivées.
 Liste et détail utilisent le même DTO et trient les étapes par `SortOrder`, puis ID.
 Le DTO conserve ses champs existants et ajoute `IsVisible` et `IsDefault`.
-Il n'existe aucun endpoint DELETE Pipeline, ni CRUD PipelineStage dans cette phase.
+Il n'existe aucun endpoint DELETE Pipeline ou PipelineStage.
 
 ## Création et modification
 
@@ -65,6 +65,66 @@ pour ce workspace. Les autres workspaces ne sont pas verrouillés.
 Une écriture SQL directe peut encore archiver un pipeline référencé comme défaut :
 aucun trigger n'est introduit pour cette règle métier inter-tables.
 
+## Configuration des étapes — Phase 4.3
+
+Les routes sont portées par `PipelineStagesController`, avec un service dédié
+`IPipelineStageService` / `PipelineStageService`, enregistré en scoped. Les réponses
+réutilisent `PipelineStageDto`. Toutes les recherches vérifient le workspace courant
+et le pipeline indiqué : une étape d'un autre pipeline, une ressource absente ou
+hors workspace renvoie 404.
+
+| Route | Résultat |
+| --- | --- |
+| `GET /api/pipelines/{pipelineId}/stages` | 200, étapes actives triées par SortOrder puis ID ; 404 si parent absent/hors workspace |
+| `GET /api/pipelines/{pipelineId}/stages?includeArchived=true` | 200, inclut les étapes archivées dans le même ordre |
+| `GET /api/pipelines/{pipelineId}/stages/{stageId}` | 200 ou 404 ; étape archivée directement consultable |
+| `POST /api/pipelines/{pipelineId}/stages` | 201 et Location vers le détail ; 400, 404 ou 409 |
+| `PUT /api/pipelines/{pipelineId}/stages/{stageId}` | 204 ; 400, 404 ou 409 |
+| `POST /api/pipelines/{pipelineId}/stages/{stageId}/archive` | 204, 404 ou 409 |
+| `POST /api/pipelines/{pipelineId}/stages/{stageId}/restore` | 204, 404 ou 409 |
+
+`PipelineStageWriteRequest` expose uniquement `Name`, `Description`, `CategoryCode`.
+Le nom obligatoire est trimé avant validation et stockage (1 à 200 caractères).
+La description est nullable, limitée à 2000 caractères. La catégorie est exactement
+`active`, `success` ou `failure`, sans normalisation de casse ni d'espaces.
+Une entrée invalide renvoie 400. Le PUT remplace ces trois champs ; une description
+omise devient null. Les propriétés JSON supplémentaires sont ignorées : elles ne
+permettent de modifier ni `PipelineId`, ni `SortOrder`, ni `ArchivedAt`, ni Opportunity.
+
+La première étape reçoit `SortOrder = 0`. Chaque création suivante reçoit le maximum
+des positions du pipeline, étapes archivées comprises, plus un. Les trous ne sont
+pas comblés et aucune étape existante n'est renumérotée. Si le maximum atteint
+`int.MaxValue`, la création renvoie 409 sans écriture ni dépassement arithmétique.
+
+Chaque écriture ouvre une transaction PostgreSQL ReadCommitted et verrouille la
+ligne du pipeline parent avec `SELECT ... FOR UPDATE`, filtré par ID et workspace.
+Le verrou précède la lecture des étapes et le calcul du maximum ; calcul, insertion
+et sauvegarde restent dans cette même transaction jusqu'au commit. Deux créations
+concurrentes du même pipeline sont ainsi sérialisées ; la seconde voit le commit
+de la première avant de calculer sa position. L'index unique existant sur
+`(PipelineId, SortOrder)` reste en place. Aucun verrou de workspace n'est pris par
+ce service et les écritures d'étapes des autres pipelines peuvent avancer.
+Le verrou entre aussi en conflit avec l'UPDATE d'archivage du parent : après attente,
+une écriture d'étape relit son état archivé et est refusée si nécessaire.
+
+Archiver renseigne `ArchivedAt`, restaurer l'efface ; les changements effectifs
+actualisent `UpdatedAt`. Les appels répétés sont idempotents, timestamps compris.
+L'étape garde toujours sa position et la restauration la rend de nouveau modifiable.
+Modifier une étape archivée renvoie 409. Si le parent est archivé, les lectures
+restent possibles mais toutes les écritures d'étapes renvoient 409, y compris
+archive/restore répétés. Il faut restaurer le parent avant de changer ses étapes.
+
+Aucune de ces opérations ne modifie les Opportunities, leurs rattachements ou les
+autres étapes. Les règles Opportunity existantes restent applicables : création et
+nouvelle affectation exigent une étape et un parent actifs ; une Opportunity déjà
+rattachée peut encore être modifiée en conservant son étape archivée ou son parent
+archivé. La catégorie ne déclenche aucune modification automatique d'Opportunity.
+
+La Phase 4.4 reste séparée : aucun réordonnancement ni endpoint associé. Aucun
+catalogue/template d'étapes, clonage, import-export ou pipeline initial n'est ajouté.
+Le modèle persistant, ses configurations et son snapshot restent inchangés : aucune
+migration Phase 4.3, même vide, n'est nécessaire ni créée.
+
 ## Migration et tests
 
 `20260929150147_Phase42PipelineLifecycleAndDefault` ajoute la référence nullable,
@@ -76,6 +136,15 @@ Les tests HTTP/PostgreSQL utilisent des conteneurs PostgreSQL 18 jetables selon 
 principe de Phase 4.1. Docker Linux doit être démarré. Ils couvrent aussi une montée
 de version depuis le schéma initial avec un pipeline existant, les contraintes FK
 et la concurrence archive/set-default. Aucun test ne cible la base de développement.
+
+`PipelineStageTests` couvre les six routes, les validations, l'isolation workspace
+et pipeline, les positions et trous archivés, les champs protégés, les cycles
+archive/restore, les parents archivés, la préservation des Opportunities et leurs
+règles d'affectation, ainsi que l'absence de DELETE. Les tests de concurrence utilisent
+de vraies transactions et connexions PostgreSQL : deux créations mises en attente
+sur le parent, un archivage concurrent du parent et une création dans un autre
+pipeline pendant que le premier est verrouillé. L'attente est observée via
+`pg_stat_activity`, avec délai maximal, avant de libérer les verrous.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release

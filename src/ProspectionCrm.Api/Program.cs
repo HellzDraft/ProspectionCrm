@@ -25,6 +25,7 @@ builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
 builder.Services.AddScoped<IBootstrapService, BootstrapService>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();
+builder.Services.AddScoped<IPipelineStageService, PipelineStageService>();
 builder.Services.AddScoped<IOpportunityService, OpportunityService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IContactService, ContactService>();
