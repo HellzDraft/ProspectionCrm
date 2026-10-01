@@ -13,7 +13,8 @@ certaines fonctionnalités restent des préparations ou des démonstrations loca
 - Serilog comme provider des abstractions .NET `ILogger<T>`, en console et fichiers locaux.
 - Stockage filesystem derrière `IFileStorage` / `LocalFileStorage`, sans raccordement
   upload/download métier pour le moment.
-- Tests xUnit dans `tests/ProspectionCrm.Api.Tests` : stockage local et bootstrap PostgreSQL.
+- Tests xUnit dans `tests/ProspectionCrm.Api.Tests` : stockage local, bootstrap,
+  pipelines/étapes, concurrence, clonage, import/export et reconstruction PostgreSQL.
 
 La solution `ProspectionCrm.slnx` regroupe les deux applications et le projet de tests.
 Le schéma comprend notamment workspaces, prospection, candidatures, profils,
@@ -86,7 +87,9 @@ docker compose ps
 Attendre que PostgreSQL soit `healthy`. Il écoute uniquement sur `127.0.0.1:5432`
 et conserve ses données dans le volume Compose `postgres_data`.
 
-Appliquer explicitement la migration versionnée `20260925101154_InitialCrmSchema` :
+Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
+`20260925101154_InitialCrmSchema`, puis
+`20260929150147_Phase42PipelineLifecycleAndDefault` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -96,7 +99,7 @@ Cette commande restaure/compile le projet si nécessaire. Ne pas créer une nouv
 migration pour installer le projet. Les migrations ne sont **jamais appliquées
 automatiquement au démarrage** de l'API.
 
-**Base vierge :** la migration crée le schéma, sans fixtures ni workspace initial.
+**Base vierge :** les migrations créent le schéma, sans fixtures ni workspace initial.
 L'API et OpenAPI démarrent, mais les opérations métier de la V1 attendent exactement
 un workspace actif. Après démarrage de l'API, appeler explicitement le bootstrap V1
 décrit ci-dessous. Il ne reconstitue aucune donnée de validation existante.
@@ -115,7 +118,7 @@ annulation et protection des chemins. Ils utilisent des dossiers temporaires net
 sans PostgreSQL, Docker, n8n ni accès au véritable `data/files`.
 Ils ne constituent pas une couverture complète du métier.
 
-Les tests de bootstrap nécessitent **Docker démarré avec des conteneurs Linux**.
+Les tests métier de Phase 4 nécessitent **Docker démarré avec des conteneurs Linux**.
 Testcontainers crée un PostgreSQL 18 jetable par test, sur un port hôte aléatoire,
 et y applique les migrations réelles. Le premier lancement peut télécharger
 `postgres:18` et l'image de nettoyage Testcontainers. Aucun conteneur, volume,
@@ -203,8 +206,26 @@ les écritures concurrentes sur ces deux tables, sans bloquer les lectures ordin
 Il est libéré au commit ou au rollback, y compris en cas d'erreur ou d'annulation.
 Il reste local au bootstrap et ne modifie ni le modèle ni les migrations.
 
-Le contrat CRUD Pipeline et ses règles d'archivage, de visibilité et de défaut
-sont décrits dans [API Pipeline V1](docs/pipelines-v1.md).
+### 7. Pipelines configurables — périmètre Phase 4
+
+L'API propose les types `employment`, `freelance`, `business`, `custom`, les étapes
+configurables, leur réordonnancement, la visibilité, l'archivage/restauration,
+le pipeline par défaut, le clonage et l'import/export JSON V1. Les contrats et
+limites sont décrits dans [API Pipeline V1](docs/pipelines-v1.md). Ces capacités
+API ne signifient pas que chaque opération possède déjà son écran Blazor.
+
+Le test `Phase4ReconstructionTests` vérifie le parcours complet sur un PostgreSQL
+vierge et isolé, des migrations au bootstrap explicite puis aux opérations métier.
+Il contrôle aussi l'absence de divergence modèle/snapshot EF. Pour le rejouer seul :
+
+```powershell
+dotnet test ProspectionCrm.slnx --configuration Release --filter FullyQualifiedName~Phase4ReconstructionTests
+```
+
+Les pipelines initiaux « Emploi .NET », « Freelance/Malt », « Emploi Jeu Vidéo » et
+« Business Jeu Vidéo » restent à créer en Phase 5 : ni les migrations ni le bootstrap
+ne les créent. Les tests utilisent uniquement des données jetables. Aucun catalogue
+global, import par fusion/remplacement ou moteur d'automatisation n'est ajouté ici.
 
 ## Docker et n8n facultatif
 

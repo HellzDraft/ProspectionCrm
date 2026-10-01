@@ -364,6 +364,11 @@ de base, catalogue/template, pipeline initial ou sujet Phase 5 n'est ajouté.
 
 ## Migration et tests
 
+La chaîne complète comporte `20260925101154_InitialCrmSchema`, puis
+`20260929150147_Phase42PipelineLifecycleAndDefault`. Les Phases 4.3 à 4.6
+n'ajoutent aucune migration. Le contrôle `HasPendingModelChanges()` et la comparaison
+des migrations appliquées/disponibles font partie du test de reconstruction Phase 4.
+
 `20260929150147_Phase42PipelineLifecycleAndDefault` ajoute la référence nullable,
 `Pipeline.IsVisible NOT NULL DEFAULT true`, la clé alternative, l'index de la FK
 et la FK composée. Les pipelines existants deviennent visibles, aucun défaut n'est
@@ -408,6 +413,38 @@ l'absence d'écriture à l'export, après refus et après rollback, ainsi que la
 préservation des données opérationnelles après import. Le test de départage par ID
 retire l'index unique uniquement dans sa base jetable, pour rendre observable ce
 cas normalement impossible avec le schéma courant. Aucune migration n'est modifiée.
+
+`Phase4ReconstructionTests` complète les tests ciblés avec un parcours HTTP unique
+sur PostgreSQL vierge : migrations, démarrage sans création implicite, bootstrap
+idempotent, pipeline masqué, étapes et archive, réordonnancement conservant les
+positions archivées, défaut, Opportunity, refus d'affectation à une archive,
+archivage/restauration du parent, clonage et round-trip export/import. Il vérifie
+les nouvelles identités, le défaut retiré sans restauration automatique, la
+préservation de l'Opportunity et l'isolation envers un autre workspace.
+
+L'audit de Phase 4.7 a identifié une fenêtre entre la validation d'une nouvelle
+affectation Opportunity et sa sauvegarde : un archivage pouvait s'y intercaler.
+La création et la modification d'Opportunity utilisent désormais une transaction.
+Pour une création ou un changement d'étape, un verrou `FOR SHARE` est pris sur le
+pipeline cible avant de relire l'état actif de l'étape et du parent, et conservé
+jusqu'au commit. Il bloque l'UPDATE d'archivage du parent et les écritures d'étapes
+(`FOR UPDATE`), mais reste compatible avec d'autres affectations Opportunity.
+Aucun verrou explicite de workspace n'est ajouté. Une modification conservant
+l'étape historique n'exige toujours pas son activité et ne prend pas ce verrou.
+
+Sept cas de concurrence complètent le parcours de reconstruction : création et
+réaffectation face à l'archivage d'étape ou de parent, revalidation après attente
+d'un archivage déjà engagé, et compatibilité entre affectations simultanées avec
+indépendance des écritures sur un autre pipeline. Les quatre premiers cas ont
+reproduit le défaut avant correction. Les contrats HTTP restent inchangés.
+
+Les quatre pipelines initiaux (Emploi .NET, Freelance/Malt, Emploi Jeu Vidéo,
+Business Jeu Vidéo) relèvent de Phase 5 et ne sont créés ni au démarrage, ni par le
+bootstrap, ni par les migrations. La FK simple du profil préféré reste une limite
+connue du modèle : le clonage contrôle le workspace et l'import/export exclut cette
+référence locale. L'activité du pipeline par défaut est assurée par les services,
+pas par un trigger contre les écritures SQL directes. Ces limites ne sont pas
+transformées en changements de schéma pendant l'audit.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release

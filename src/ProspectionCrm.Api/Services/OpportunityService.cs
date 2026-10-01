@@ -29,6 +29,7 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
         CreateOpportunityRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var error = await ValidateReferencesAsync(workspaceId, request.CompanyId, request.ContactId,
             request.PipelineStageId, requireActiveStage: true, request.PriorityCode, cancellationToken);
         if (error is not null)
@@ -49,6 +50,7 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
         };
         dbContext.Opportunities.Add(opportunity);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return (ToDto(opportunity), null);
     }
 
@@ -56,6 +58,7 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
         Guid id, UpdateOpportunityRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var opportunity = await dbContext.Opportunities
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (opportunity is null)
@@ -76,6 +79,7 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
         opportunity.Notes = request.Notes;
         opportunity.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return (true, null);
     }
 
@@ -122,6 +126,18 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
         if (contactId.HasValue && !await dbContext.Contacts.AnyAsync(
                 x => x.Id == contactId.Value && x.WorkspaceId == workspaceId, cancellationToken))
             return "ContactId does not reference a contact in the current workspace.";
+        if (requireActiveStage && pipelineStageId.HasValue)
+        {
+            // Keep a new selection valid through SaveChanges/commit. SHARE permits concurrent
+            // opportunity selections, but conflicts with parent archive UPDATE and stage writers'
+            // FOR UPDATE. Re-read the stage's active state below after any lock wait.
+            await dbContext.Pipelines.FromSqlInterpolated($"""
+                SELECT p.* FROM "Pipelines" p
+                WHERE p."WorkspaceId" = {workspaceId}
+                  AND p."Id" = (SELECT s."PipelineId" FROM "PipelineStages" s WHERE s."Id" = {pipelineStageId.Value})
+                FOR SHARE OF p
+                """).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        }
         if (!pipelineStageId.HasValue || !await dbContext.PipelineStages.AnyAsync(
                 x => x.Id == pipelineStageId.Value && x.Pipeline.WorkspaceId == workspaceId
                     && (!requireActiveStage || (x.ArchivedAt == null && x.Pipeline.ArchivedAt == null)), cancellationToken))

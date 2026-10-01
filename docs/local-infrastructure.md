@@ -137,5 +137,10 @@ Ne jamais exécuter cette commande sans ce ciblage pour nettoyer un test isolé.
 Une base migrée est vide de données métier. Le bootstrap explicite
 `POST /api/setup/bootstrap`, décrit dans le README, crée uniquement le propriétaire
 local V1 et son workspace actif. Aucun jeu de validation existant n'est recréé ici.
-Les tests automatisés du bootstrap utilisent Testcontainers et leurs propres
+Les tests automatisés de Phase 4 utilisent Testcontainers et leurs propres
 instances PostgreSQL jetables, sans passer par le Compose de développement.
+`Phase4ReconstructionTests` vérifie une base sans table applicative, l'application
+de toutes les migrations, le démarrage de l'API sans bootstrap implicite, puis le
+parcours bootstrap → pipeline/étapes → ordre/défaut → Opportunity → archives →
+clonage → export/import et isolation workspace. La commande ciblée figure dans
+le README. Aucun volume ni identifiant de développement n'est utilisé.
