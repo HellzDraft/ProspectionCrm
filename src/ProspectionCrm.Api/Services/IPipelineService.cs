@@ -4,6 +4,8 @@ namespace ProspectionCrm.Api.Services;
 
 public interface IPipelineService
 {
+    Task<PipelineTransferDocument?> ExportAsync(Guid pipelineId, CancellationToken cancellationToken);
+    Task<(PipelineDto? Pipeline, string? Error)> ImportAsync(PipelineTransferDocument? document, CancellationToken cancellationToken);
     Task<IReadOnlyList<PipelineDto>> GetAllAsync(bool includeArchived = false, CancellationToken cancellationToken = default);
     Task<PipelineDto?> GetByIdAsync(Guid id, bool includeArchivedStages = false, CancellationToken cancellationToken = default);
     Task<(PipelineDto? Pipeline, string? Error)> CreateAsync(PipelineWriteRequest request, CancellationToken cancellationToken);

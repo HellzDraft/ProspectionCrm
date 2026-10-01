@@ -8,6 +8,85 @@ namespace ProspectionCrm.Api.Services;
 
 public class PipelineService(ProspectionCrmDbContext dbContext, ICurrentWorkspaceProvider currentWorkspaceProvider) : IPipelineService
 {
+    public async Task<PipelineTransferDocument?> ExportAsync(Guid pipelineId, CancellationToken cancellationToken)
+    {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        // One read statement gives a consistent configuration without locking or tracking entities.
+        return await dbContext.Pipelines.AsNoTracking().AsSingleQuery()
+            .Where(x => x.Id == pipelineId && x.WorkspaceId == workspaceId)
+            .Select(x => new PipelineTransferDocument
+            {
+                SchemaVersion = 1,
+                Pipeline = new PipelineTransferConfiguration
+                {
+                    Name = x.Name,
+                    TypeCode = x.TypeCode,
+                    Description = x.Description,
+                    IsVisible = x.IsVisible,
+                    Stages = x.Stages.Where(stage => stage.ArchivedAt == null)
+                        .OrderBy(stage => stage.SortOrder).ThenBy(stage => stage.Id)
+                        .Select(stage => new PipelineTransferStage
+                        {
+                            Name = stage.Name, Description = stage.Description, CategoryCode = stage.CategoryCode
+                        }).ToArray()
+                }
+            }).SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<(PipelineDto? Pipeline, string? Error)> ImportAsync(
+        PipelineTransferDocument? document, CancellationToken cancellationToken)
+    {
+        if (document is null)
+            return (null, "A pipeline document is required.");
+        if (document.SchemaVersion != 1)
+            return (null, $"Unsupported schemaVersion {document.SchemaVersion}. Only schemaVersion 1 is supported.");
+        var configuration = document.Pipeline;
+        if (configuration is null)
+            return (null, "pipeline is required and must not be null.");
+        var error = Validate(new PipelineWriteRequest
+        {
+            Name = configuration.Name ?? string.Empty, TypeCode = configuration.TypeCode ?? string.Empty,
+            Description = configuration.Description, IsVisible = configuration.IsVisible
+        });
+        if (error is not null)
+            return (null, $"pipeline: {error}");
+        if (configuration.Stages is null || configuration.Stages.Length > 1000)
+            return (null, "pipeline.stages is required and must contain at most 1000 stages.");
+        for (var i = 0; i < configuration.Stages.Length; i++)
+        {
+            var stage = configuration.Stages[i];
+            if (stage is null)
+                return (null, $"pipeline.stages[{i}] must not be null.");
+            error = PipelineStageService.Validate(new PipelineStageWriteRequest
+            {
+                Name = stage.Name ?? string.Empty, Description = stage.Description, CategoryCode = stage.CategoryCode ?? string.Empty
+            });
+            if (error is not null)
+                return (null, $"pipeline.stages[{i}]: {error}");
+        }
+
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var pipeline = new Pipeline
+        {
+            WorkspaceId = workspaceId,
+            Name = configuration.Name!.Trim(),
+            TypeCode = configuration.TypeCode!,
+            Description = configuration.Description,
+            IsVisible = configuration.IsVisible,
+            Stages = configuration.Stages.Select((stage, index) => new PipelineStage
+            {
+                Name = stage!.Name!.Trim(), Description = stage.Description,
+                CategoryCode = stage.CategoryCode!, SortOrder = index
+            }).ToList()
+        };
+        // Fresh identities/timestamps; no profile, default, archive or operational graph is imported.
+        dbContext.Pipelines.Add(pipeline);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (ToDto(pipeline), null);
+    }
+
     public async Task<IReadOnlyList<PipelineDto>> GetAllAsync(bool includeArchived = false, CancellationToken cancellationToken = default)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);

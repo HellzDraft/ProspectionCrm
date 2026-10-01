@@ -193,7 +193,7 @@ public class PipelineStageService(ProspectionCrmDbContext dbContext, ICurrentWor
     private static PipelineStageWriteResult ParentArchived()
         => new(PipelineStageWriteStatus.Conflict, Error: "Restore the archived pipeline before changing its stages.");
 
-    private static string? Validate(PipelineStageWriteRequest request)
+    internal static string? Validate(PipelineStageWriteRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200)
             return "Name is required and must not exceed 200 characters after trimming.";

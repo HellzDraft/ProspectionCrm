@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using ProspectionCrm.Api.Dtos.Pipelines;
 using ProspectionCrm.Api.Services;
@@ -8,6 +10,43 @@ namespace ProspectionCrm.Api.Controllers;
 [Route("api/pipelines")]
 public class PipelinesController(IPipelineService pipelineService) : ControllerBase
 {
+    // Local to the portable format: existing API contracts retain their JSON behavior.
+    private static readonly JsonSerializerOptions ImportJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
+
+    [HttpGet("{pipelineId:guid}/export")]
+    [ProducesResponseType<PipelineTransferDocument>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PipelineTransferDocument>> Export(Guid pipelineId, CancellationToken cancellationToken)
+    {
+        var document = await pipelineService.ExportAsync(pipelineId, cancellationToken);
+        return document is null ? NotFound() : Ok(document);
+    }
+
+    [HttpPost("import")]
+    [ProducesResponseType<PipelineDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PipelineDto>> Import(JsonElement body, CancellationToken cancellationToken)
+    {
+        PipelineTransferDocument? document;
+        try
+        {
+            document = body.Deserialize<PipelineTransferDocument>(ImportJsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            return Problem(detail: $"Invalid pipeline document: {exception.Message}", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var (pipeline, error) = await pipelineService.ImportAsync(document, cancellationToken);
+        if (error is not null)
+            return Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+        return CreatedAtAction(nameof(GetById), new { id = pipeline!.Id }, pipeline);
+    }
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PipelineDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<PipelineDto>>> GetAll(

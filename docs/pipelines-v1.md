@@ -1,4 +1,4 @@
-# API Pipeline et PipelineStage — Phases 4.2 à 4.5
+# API Pipeline et PipelineStage — Phases 4.2 à 4.6
 
 Toutes les routes utilisent `ICurrentWorkspaceProvider` : exactement un workspace
 actif en V1. Un identifiant absent ou appartenant à un autre workspace renvoie 404.
@@ -15,6 +15,8 @@ Le bootstrap ne crée toujours aucun pipeline.
 | `POST /api/pipelines/{id}/restore` | 204 ou 404 |
 | `POST /api/pipelines/{id}/set-default` | 204, 404, ou 409 si archivé |
 | `POST /api/pipelines/{pipelineId}/clone` | 201 et Location vers le clone ; 400, 404 ou 409 |
+| `GET /api/pipelines/{pipelineId}/export` | 200, document JSON V1 ; 404 si absent/hors workspace |
+| `POST /api/pipelines/import` | 201 et Location vers le nouveau pipeline ; 400 si document invalide |
 
 Le détail retourne le pipeline même s'il est archivé, avec uniquement ses étapes
 actives par défaut. `GET /api/pipelines/{id}?includeArchivedStages=true` inclut
@@ -128,7 +130,7 @@ rattachée peut encore être modifiée en conservant son étape archivée ou son
 archivé. La catégorie ne déclenche aucune modification automatique d'Opportunity.
 
 Le réordonnancement et le clonage disposent des contrats distincts de Phases 4.4 et
-4.5 décrits ci-dessous. Aucun catalogue/template, import-export ou pipeline initial n'est ajouté.
+4.5 décrits ci-dessous. L'import/export relève de la Phase 4.6 ; aucun catalogue/template ou pipeline initial n'est ajouté.
 Le modèle persistant, ses configurations et son snapshot restent inchangés : aucune
 migration Phase 4.3, même vide, n'est nécessaire ni créée.
 
@@ -204,7 +206,7 @@ Les invariants de Phase 4.3 restent applicables : création en fin, archive sans
 déplacement, restauration à la position conservée, modification d'archive interdite
 et aucune écriture d'étape lorsque le parent est archivé. Aucun réordonnancement
 partiel, déplacement entre pipelines ou endpoint montée/descente n'est ajouté.
-Le clonage relève de la Phase 4.5 ci-dessous ; les Phases 4.6 et 5 restent hors périmètre. Aucune modification du
+Le clonage et l'import/export relèvent des Phases 4.5 et 4.6 ci-dessous ; la Phase 5 reste hors périmètre. Aucune modification du
 modèle persistant ni migration Phase 4.4 n'est nécessaire.
 
 ## Clonage de configuration — Phase 4.5
@@ -267,8 +269,98 @@ temporaires d'un réordonnancement en cours. Deux clonages de la même source so
 sérialisés et peuvent réussir avec des identifiants indépendants. Le clonage ne prend
 aucun verrou explicite de workspace ; les clones d'autres pipelines peuvent avancer.
 
-Le modèle persistant reste inchangé : aucune migration Phase 4.5. Aucun import/export,
-clonage inter-workspace, catalogue/template global, pipeline initial ou logique Phase 5.
+Le modèle persistant reste inchangé : aucune migration Phase 4.5. L'import/export est
+décrit en Phase 4.6 ; aucun clonage inter-workspace, catalogue/template global, pipeline initial ou logique Phase 5.
+
+## Import/export JSON portable — Phase 4.6
+
+Le format V1 est une configuration de pipeline, **pas une sauvegarde de base**.
+`schemaVersion` représente la version du schéma d'échange, indépendamment de la
+version de ProspectionCrm. Seule la valeur entière `1` est supportée.
+
+```json
+{
+  "schemaVersion": 1,
+  "pipeline": {
+    "name": "Emploi .NET",
+    "typeCode": "employment",
+    "description": "Pipeline de prospection .NET",
+    "isVisible": true,
+    "stages": [
+      { "name": "À analyser", "description": null, "categoryCode": "active" },
+      { "name": "Candidature envoyée", "description": null, "categoryCode": "active" }
+    ]
+  }
+}
+```
+
+Les propriétés ci-dessus constituent la liste exhaustive des propriétés permises.
+Toutes sont obligatoires sauf `description`, nullable et pouvant être omise dans le
+pipeline et les étapes. `isVisible` doit être explicitement un booléen, même false.
+`stages` est obligatoire et non null ; `[]` est valide, un élément null ne l'est pas.
+
+### Export
+
+`GET /api/pipelines/{pipelineId}/export` renvoie ce document pour un pipeline du
+workspace courant, actif ou archivé. Une source absente ou hors workspace renvoie
+404. Une projection EF sans tracking, en une seule requête de lecture, sélectionne
+uniquement la configuration et les étapes actives triées par `SortOrder`, puis `Id`.
+Le tableau porte leur ordre : aucun `SortOrder` numérique n'est exporté. L'export
+n'écrit rien, n'ajoute aucun timestamp et ne prend aucun verrou explicite. Deux
+exports d'un état inchangé donnent la même structure métier ordonnée.
+
+Le contrat exclut les ID du pipeline et des étapes, `WorkspaceId`, `SortOrder`,
+`ArchivedAt`, `CreatedAt`, `UpdatedAt`, `IsDefault` et `PreferredCandidateProfileId`.
+Le profil préféré est une référence locale non portable, même si son workspace
+est celui du pipeline. Aucun CandidateProfile, Opportunity, CrmTask, Application,
+Proposal, EmailMessage, CalendarEvent, ActivityEntry, donnée d'automatisation,
+autre donnée opérationnelle ou historique n'est exporté.
+
+### Import et validation
+
+`POST /api/pipelines/import` reçoit directement le document et crée **toujours un
+nouveau pipeline** dans le workspace courant. Aucun pipeline existant n'est mis à
+jour, fusionné ou remplacé. Les noms identiques sont autorisés. Le nouveau pipeline
+et ses étapes reçoivent de nouveaux GUID et `CreatedAt`, avec `UpdatedAt` et
+`ArchivedAt` null. Le profil préféré reste null, `IsDefault` vaut false et
+`Workspace.DefaultPipelineId` reste inchangé, même s'il n'existait aucun défaut.
+Les positions sont normalisées à `0..n-1` selon l'ordre du tableau reçu.
+
+La limite V1 est **1000 étapes par document importé** ; elle est contrôlée avant
+toute création, sans ajouter de contrainte générale au modèle Pipeline ni limiter
+l'export. Les noms sont trimés, obligatoires, non blancs et limités à 200 caractères
+après trim. Les descriptions nullables sont limitées à 2000 caractères. Les codes
+restent sensibles à la casse, sans trim : `employment`, `freelance`, `business`,
+`custom` pour le pipeline ; `active`, `success`, `failure` pour les étapes.
+
+Le contrôleur désérialise le `JsonElement` reçu vers `PipelineTransferDocument`
+avec des options System.Text.Json **locales à l'import** : noms camelCase exacts,
+`UnmappedMemberHandling = Disallow`, types stricts sans conversion d'une chaîne en
+nombre. Les membres `required` imposent la présence des champs obligatoires ; le
+service contrôle les nulls, la version et les invariants métier avant insertion.
+Toute propriété inconnue à la racine, dans le pipeline ou une étape est refusée,
+y compris un ID, un profil préféré ou un champ d'une version future. Les contrats
+CRUD et clonage conservent leur comportement JSON antérieur.
+
+Une version entière différente de 1 renvoie 400 avec un `ProblemDetails` mentionnant
+explicitement `schemaVersion` et la seule version supportée. Les propriétés absentes,
+nulls interdits, types incorrects, JSON malformés et erreurs métier renvoient aussi
+400 ; les erreurs de désérialisation ne deviennent pas des 500.
+
+Après validation complète, le service construit explicitement le pipeline et ses
+seules étapes, puis les insère dans une transaction unique. Toute erreur DB pendant
+l'insertion d'une étape annule l'ensemble : aucun pipeline ou étape partiel ne
+subsiste. Aucun verrou explicite de pipeline existant ni infrastructure de verrouillage
+n'est nécessaire. Aucune donnée opérationnelle n'est créée, copiée ou déplacée.
+
+Le succès renvoie 201, le `PipelineDto` complet du nouveau pipeline et `Location`
+vers `GET /api/pipelines/{newPipelineId}`. Un round-trip export/import préserve les
+champs portables et l'ordre actif, avec de nouvelles identités et sans profil préféré.
+Les noms importés sont normalisés par trim selon les règles métier existantes.
+
+Le modèle EF, ses configurations et migrations restent inchangés ; aucune migration,
+même vide, n'est nécessaire. Aucun import multi-pipelines, remplacement, sauvegarde
+de base, catalogue/template, pipeline initial ou sujet Phase 5 n'est ajouté.
 
 ## Migration et tests
 
@@ -306,6 +398,16 @@ opérationnelles. Les tests PostgreSQL suspendent de vraies écritures d'étape,
 un réordonnancement après sauvegarde des positions temporaires, pour vérifier l'attente
 et la copie de l'état committé. Ils couvrent aussi deux clonages simultanés, un autre
 pipeline indépendant et l'absence d'interblocage clonage/archivage du pipeline par défaut.
+
+`PipelineTransferTests` couvre les exports actifs/archivés, les champs portables
+exacts, l'ordre et son départage, l'isolation workspace, les exports sans étape
+active et les round-trips. Les imports vérifient les identités, le défaut inchangé,
+les codes, le trim, les limites, les tableaux de 0/1000/1001 étapes et les erreurs
+structurelles à tous les niveaux. Des snapshots de toutes les tables vérifient
+l'absence d'écriture à l'export, après refus et après rollback, ainsi que la
+préservation des données opérationnelles après import. Le test de départage par ID
+retire l'index unique uniquement dans sa base jetable, pour rendre observable ce
+cas normalement impossible avec le schéma courant. Aucune migration n'est modifiée.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release
