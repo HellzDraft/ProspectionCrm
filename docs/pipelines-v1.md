@@ -1,4 +1,4 @@
-# API Pipeline et PipelineStage — Phases 4.2 à 4.4
+# API Pipeline et PipelineStage — Phases 4.2 à 4.5
 
 Toutes les routes utilisent `ICurrentWorkspaceProvider` : exactement un workspace
 actif en V1. Un identifiant absent ou appartenant à un autre workspace renvoie 404.
@@ -14,6 +14,7 @@ Le bootstrap ne crée toujours aucun pipeline.
 | `POST /api/pipelines/{id}/archive` | 204 ou 404 |
 | `POST /api/pipelines/{id}/restore` | 204 ou 404 |
 | `POST /api/pipelines/{id}/set-default` | 204, 404, ou 409 si archivé |
+| `POST /api/pipelines/{pipelineId}/clone` | 201 et Location vers le clone ; 400, 404 ou 409 |
 
 Le détail retourne le pipeline même s'il est archivé, avec uniquement ses étapes
 actives par défaut. `GET /api/pipelines/{id}?includeArchivedStages=true` inclut
@@ -59,11 +60,17 @@ Cela garantit l'appartenance au workspace même en SQL direct, sans cascade cycl
 Le modèle conserve les GUID générés pour les identifiants.
 
 L'état actif du défaut est garanti par le service : archive, restore et set-default
-prennent tous un verrou PostgreSQL `FOR UPDATE` sur le workspace, dans une transaction
+prennent tous un verrou PostgreSQL `FOR NO KEY UPDATE` sur le workspace, dans une transaction
 ReadCommitted, avant de lire le pipeline. Cela sérialise leurs appels concurrents
 pour ce workspace. Les autres workspaces ne sont pas verrouillés.
 Une écriture SQL directe peut encore archiver un pipeline référencé comme défaut :
 aucun trigger n'est introduit pour cette règle métier inter-tables.
+
+Depuis la Phase 4.5, `NO KEY UPDATE` remplace ici `UPDATE` : les opérations de cycle
+de vie/défaut restent mutuellement exclusives, mais les vérifications FK `KEY SHARE`
+lors de l'insertion d'un clone peuvent avancer. Cela évite un interblocage entre un
+clone tenant le verrou de la source puis insérant un pipeline, et un archivage tenant
+le verrou de workspace puis attendant la source. Aucune clé de workspace n'est modifiée.
 
 ## Configuration des étapes — Phase 4.3
 
@@ -120,8 +127,8 @@ nouvelle affectation exigent une étape et un parent actifs ; une Opportunity d�
 rattachée peut encore être modifiée en conservant son étape archivée ou son parent
 archivé. La catégorie ne déclenche aucune modification automatique d'Opportunity.
 
-Le réordonnancement dispose du contrat distinct de Phase 4.4 décrit ci-dessous. Aucun
-catalogue/template d'étapes, clonage, import-export ou pipeline initial n'est ajouté.
+Le réordonnancement et le clonage disposent des contrats distincts de Phases 4.4 et
+4.5 décrits ci-dessous. Aucun catalogue/template, import-export ou pipeline initial n'est ajouté.
 Le modèle persistant, ses configurations et son snapshot restent inchangés : aucune
 migration Phase 4.3, même vide, n'est nécessaire ni créée.
 
@@ -197,8 +204,71 @@ Les invariants de Phase 4.3 restent applicables : création en fin, archive sans
 déplacement, restauration à la position conservée, modification d'archive interdite
 et aucune écriture d'étape lorsque le parent est archivé. Aucun réordonnancement
 partiel, déplacement entre pipelines ou endpoint montée/descente n'est ajouté.
-Les sujets des Phases 4.5, 4.6 et 5 restent hors périmètre. Aucune modification du
+Le clonage relève de la Phase 4.5 ci-dessous ; les Phases 4.6 et 5 restent hors périmètre. Aucune modification du
 modèle persistant ni migration Phase 4.4 n'est nécessaire.
+
+## Clonage de configuration — Phase 4.5
+
+`POST /api/pipelines/{pipelineId}/clone` reçoit uniquement le nouveau nom explicite :
+
+```json
+{ "name": "Emploi .NET — Variante Remote" }
+```
+
+`PipelineCloneRequest` expose uniquement `Name`. Le nom est obligatoire, non blanc,
+trimé avant validation et stockage, limité à 200 caractères après trim. Les noms
+identiques, y compris celui de la source, sont autorisés. Les champs JSON supplémentaires
+sont ignorés selon la convention existante : ils ne permettent d'imposer ni identifiants,
+ni workspace, configuration, étapes, positions, archivage ou état de défaut.
+
+| Statut | Signification |
+| --- | --- |
+| 201 | `PipelineDto` du clone et Location vers `GET /api/pipelines/{newPipelineId}` |
+| 400 | Nom absent, null, blanc ou trop long, ou corps invalide |
+| 404 | Source absente ou hors workspace courant |
+| 409 | Profil candidat préféré de la source hors workspace courant |
+
+La source est recherchée via `ICurrentWorkspaceProvider`. Une source archivée peut
+être clonée et reste inchangée, toujours archivée. Le nouveau pipeline appartient au
+même workspace, possède un nouveau GUID et copie `TypeCode`, `Description`, `IsVisible`
+et, si renseigné et du même workspace, `PreferredCandidateProfileId`. Il est toujours
+actif (`ArchivedAt = null`), avec un nouveau `CreatedAt` et `UpdatedAt = null`.
+
+Audit du profil préféré : la relation EF est une FK nullable simple vers
+`CandidateProfile.Id`, avec suppression `SetNull`. Le profil possède un `WorkspaceId`,
+mais la FK ne garantit pas l'égalité des workspaces. Le service contrôle donc cette
+appartenance avant copie ; une référence hors workspace provoque un 409 sans clone.
+Un profil du même workspace, même archivé, reste référencé sans être dupliqué ni modifié.
+Une référence null reste null. Aucune contrainte ou architecture de profil n'est changée.
+
+Seules les étapes actives sont copiées, par `SortOrder` croissant puis ID. Elles
+reçoivent de nouveaux GUID, le même nom, description et catégorie, un nouveau
+`CreatedAt`, `UpdatedAt = null` et `ArchivedAt = null`. Elles sont rattachées au clone
+et leurs positions sont normalisées à `0..n-1`. Par exemple, des positions actives
+0, 2 et 4 deviennent 0, 1 et 2. Les archives sont exclues ; les positions et données
+de la source ne sont jamais modifiées. Sans étape active, le clone n'a aucune étape.
+
+Le clone ne devient jamais automatiquement le défaut (`IsDefault = false`).
+`Workspace.DefaultPipelineId` reste inchangé, même si la source est le défaut.
+L'opération `set-default` existante reste disponible pour un choix ultérieur.
+
+Le clonage ne copie aucun graphe d'entités : il construit explicitement un nouveau
+Pipeline et ses seules étapes actives. Aucune Opportunity, tâche, candidature,
+proposition, email, événement calendrier, activité, règle ou historique d'automatisation,
+ni autre donnée opérationnelle n'est copiée ou déplacée. Aucun CandidateProfile n'est créé.
+
+Une transaction ReadCommitted verrouille la source avec `FOR UPDATE`, comme les
+écritures d'étapes des Phases 4.3/4.4. La lecture de la source utilise les valeurs
+retournées après acquisition du verrou, sans réutiliser d'entité suivie antérieurement ;
+les étapes sont ensuite lues sans tracking. Le pipeline et toutes ses étapes sont
+insérés dans cette transaction et committés ensemble. Une erreur d'insertion d'étape
+annule aussi la création du pipeline. Le clone ne peut donc observer les positions
+temporaires d'un réordonnancement en cours. Deux clonages de la même source sont
+sérialisés et peuvent réussir avec des identifiants indépendants. Le clonage ne prend
+aucun verrou explicite de workspace ; les clones d'autres pipelines peuvent avancer.
+
+Le modèle persistant reste inchangé : aucune migration Phase 4.5. Aucun import/export,
+clonage inter-workspace, catalogue/template global, pipeline initial ou logique Phase 5.
 
 ## Migration et tests
 
@@ -227,6 +297,15 @@ la phase temporaire, préservation de tous les champs Opportunity et règles d'a
 Les tests PostgreSQL réels couvrent deux réordonnancements concurrents, création et
 réordonnancement concurrents, revalidation après création/archivage pendant l'attente
 du verrou, et réordonnancement indépendant dans un autre pipeline.
+
+`PipelineCloneTests` vérifie le contrat HTTP, les copies explicites, la normalisation,
+les sources archivées, le profil préféré (y compris la FK inter-workspace actuellement
+permise et le refus métier en 409), le défaut inchangé et le rollback atomique. Les
+snapshots de toutes les tables prouvent la préservation de la source et des données
+opérationnelles. Les tests PostgreSQL suspendent de vraies écritures d'étape, notamment
+un réordonnancement après sauvegarde des positions temporaires, pour vérifier l'attente
+et la copie de l'état committé. Ils couvrent aussi deux clonages simultanés, un autre
+pipeline indépendant et l'absence d'interblocage clonage/archivage du pipeline par défaut.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release

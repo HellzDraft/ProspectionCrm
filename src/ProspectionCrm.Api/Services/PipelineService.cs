@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.Pipelines;
@@ -49,6 +50,52 @@ public class PipelineService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
         dbContext.Pipelines.Add(pipeline);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (ToDto(pipeline), null);
+    }
+
+    public async Task<PipelineCloneResult> CloneAsync(
+        Guid pipelineId, PipelineCloneRequest request, CancellationToken cancellationToken)
+    {
+        var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        // Same parent lock as stage writes. No tracking: copy the committed source, never its graph.
+        var source = await dbContext.Pipelines.FromSqlInterpolated(
+            $"SELECT * FROM \"Pipelines\" WHERE \"Id\" = {pipelineId} AND \"WorkspaceId\" = {workspaceId} FOR UPDATE")
+            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        if (source is null)
+            return new(PipelineCloneStatus.NotFound);
+        var error = ValidateName(request.Name);
+        if (error is not null)
+            return new(PipelineCloneStatus.InvalidInput, Error: error);
+        // The existing simple FK ensures existence, but does not enforce workspace ownership.
+        if (source.PreferredCandidateProfileId is Guid profileId
+            && !await dbContext.CandidateProfiles.AnyAsync(x => x.Id == profileId && x.WorkspaceId == workspaceId, cancellationToken))
+            return new(PipelineCloneStatus.Conflict, Error: "The source preferred candidate profile must belong to the current workspace.");
+
+        var stages = await dbContext.PipelineStages.AsNoTracking()
+            .Where(x => x.PipelineId == pipelineId && x.ArchivedAt == null)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var clone = new Pipeline
+        {
+            WorkspaceId = workspaceId,
+            Name = request.Name.Trim(),
+            TypeCode = source.TypeCode,
+            Description = source.Description,
+            IsVisible = source.IsVisible,
+            PreferredCandidateProfileId = source.PreferredCandidateProfileId,
+            Stages = stages.Select((stage, index) => new PipelineStage
+            {
+                Name = stage.Name,
+                Description = stage.Description,
+                CategoryCode = stage.CategoryCode,
+                SortOrder = index
+            }).ToList()
+        };
+        // New entities supply fresh GUIDs/CreatedAt and null UpdatedAt/ArchivedAt.
+        // Only this explicitly built configuration is inserted; Workspace.DefaultPipelineId is untouched.
+        dbContext.Pipelines.Add(clone);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(PipelineCloneStatus.Succeeded, ToDto(clone));
     }
 
     public async Task<(bool Found, string? Error)> UpdateAsync(Guid id, PipelineWriteRequest request, CancellationToken cancellationToken)
@@ -125,21 +172,29 @@ public class PipelineService(ProspectionCrmDbContext dbContext, ICurrentWorkspac
     // Lock before reading the pipeline. All lifecycle/default operations follow this order,
     // so concurrent archive/set-default calls cannot leave an archived default behind.
     // The composite FK separately enforces same-workspace ownership, even for direct SQL.
+    // NO KEY UPDATE still serializes lifecycle writes but permits FK KEY SHARE checks when
+    // a clone inserts its new pipeline while holding the source row (avoids a lock-order cycle).
     private Task<Workspace> LockWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken)
         => dbContext.Workspaces.FromSqlInterpolated(
-            $"SELECT * FROM \"Workspaces\" WHERE \"Id\" = {workspaceId} FOR UPDATE")
+            $"SELECT * FROM \"Workspaces\" WHERE \"Id\" = {workspaceId} FOR NO KEY UPDATE")
             .SingleAsync(cancellationToken);
 
     private static string? Validate(PipelineWriteRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200)
-            return "Name is required and must not exceed 200 characters after trimming.";
+        var nameError = ValidateName(request.Name);
+        if (nameError is not null)
+            return nameError;
         if (request.Description?.Length > 2000)
             return "Description must not exceed 2000 characters.";
         if (request.TypeCode is not ("employment" or "freelance" or "business" or "custom"))
             return "TypeCode must be employment, freelance, business or custom.";
         return null;
     }
+
+    private static string? ValidateName(string name)
+        => string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200
+            ? "Name is required and must not exceed 200 characters after trimming."
+            : null;
 
     private static PipelineDto ToDto(Pipeline pipeline) => new()
     {

@@ -11,4 +11,10 @@ public interface IPipelineService
     Task<bool> ArchiveAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> RestoreAsync(Guid id, CancellationToken cancellationToken);
     Task<(bool Found, string? Error)> SetDefaultAsync(Guid id, CancellationToken cancellationToken);
+    Task<PipelineCloneResult> CloneAsync(Guid pipelineId, PipelineCloneRequest request, CancellationToken cancellationToken);
 }
+
+public enum PipelineCloneStatus { Succeeded, NotFound, InvalidInput, Conflict }
+
+public sealed record PipelineCloneResult(
+    PipelineCloneStatus Status, PipelineDto? Pipeline = null, string? Error = null);

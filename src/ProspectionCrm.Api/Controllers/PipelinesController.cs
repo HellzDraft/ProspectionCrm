@@ -35,6 +35,25 @@ public class PipelinesController(IPipelineService pipelineService) : ControllerB
         return CreatedAtAction(nameof(GetById), new { id = pipeline!.Id }, pipeline);
     }
 
+    [HttpPost("{pipelineId:guid}/clone")]
+    [ProducesResponseType<PipelineDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PipelineDto>> Clone(
+        Guid pipelineId, PipelineCloneRequest request, CancellationToken cancellationToken)
+    {
+        var result = await pipelineService.CloneAsync(pipelineId, request, cancellationToken);
+        return result.Status switch
+        {
+            PipelineCloneStatus.Succeeded => CreatedAtAction(nameof(GetById), new { id = result.Pipeline!.Id }, result.Pipeline),
+            PipelineCloneStatus.NotFound => NotFound(),
+            PipelineCloneStatus.InvalidInput => Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            PipelineCloneStatus.Conflict => Problem(detail: result.Error, statusCode: StatusCodes.Status409Conflict),
+            _ => throw new InvalidOperationException("Unexpected pipeline clone status.")
+        };
+    }
+
     [HttpPut("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
