@@ -222,10 +222,27 @@ Il contrôle aussi l'absence de divergence modèle/snapshot EF. Pour le rejouer 
 dotnet test ProspectionCrm.slnx --configuration Release --filter FullyQualifiedName~Phase4ReconstructionTests
 ```
 
-Les pipelines initiaux « Emploi .NET », « Freelance/Malt », « Emploi Jeu Vidéo » et
-« Business Jeu Vidéo » restent à créer en Phase 5 : ni les migrations ni le bootstrap
-ne les créent. Les tests utilisent uniquement des données jetables. Aucun catalogue
-global, import par fusion/remplacement ou moteur d'automatisation n'est ajouté ici.
+### 8. Initialisation métier explicite — Phase 5, Emploi .NET
+
+Après le bootstrap, appeler séparément :
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://localhost:5016/api/setup/initial-pipelines'
+```
+
+Cet endpoint sans corps crée uniquement « Emploi .NET » et ses sept étapes, puis le
+choisit comme défaut si aucun défaut n'existe. Il renvoie 201 avec le `PipelineDto`
+et un `Location` vers son détail, ou 200 s'il a déjà été initialisé. Les répétitions
+ne réinitialisent ni les modifications utilisateur ni un défaut retiré ensuite.
+Un pipeline homonyme non reconnu renvoie 409 sans écriture ; le renommer explicitement
+permet l'initialisation, sans adoption automatique. La stratégie d'identité stable,
+les conflits et la transaction sont détaillés dans [API Pipeline V1](docs/pipelines-v1.md).
+
+Le bootstrap technique crée toujours uniquement Owner + Workspace. Les migrations
+et le démarrage de l'API ne créent aucun pipeline. Cette livraison ajoute l'appel
+API explicite, sans appel automatique depuis Blazor. « Freelance/Malt », « Emploi Jeu
+Vidéo » et « Business Jeu Vidéo » restent reportés. Aucun moteur de collecte,
+scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
 ## Docker et n8n facultatif
 

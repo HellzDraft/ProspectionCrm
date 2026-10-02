@@ -1,8 +1,9 @@
-# API Pipeline et PipelineStage — Phases 4.2 à 4.6
+# API Pipeline et PipelineStage — Phase 4 et initialisation Phase 5
 
 Toutes les routes utilisent `ICurrentWorkspaceProvider` : exactement un workspace
 actif en V1. Un identifiant absent ou appartenant à un autre workspace renvoie 404.
 Le bootstrap ne crée toujours aucun pipeline.
+La Phase 5 ajoute un appel d'initialisation métier distinct, décrit ci-dessous.
 
 | Route | Résultat |
 | --- | --- |
@@ -438,13 +439,98 @@ d'un archivage déjà engagé, et compatibilité entre affectations simultanées
 indépendance des écritures sur un autre pipeline. Les quatre premiers cas ont
 reproduit le défaut avant correction. Les contrats HTTP restent inchangés.
 
-Les quatre pipelines initiaux (Emploi .NET, Freelance/Malt, Emploi Jeu Vidéo,
-Business Jeu Vidéo) relèvent de Phase 5 et ne sont créés ni au démarrage, ni par le
-bootstrap, ni par les migrations. La FK simple du profil préféré reste une limite
+Les pipelines initiaux relèvent de Phase 5 ; seul Emploi .NET est maintenant
+disponible via l'appel explicite décrit ci-dessous. Aucun n'est créé au démarrage,
+par le bootstrap ou par les migrations. La FK simple du profil préféré reste une limite
 connue du modèle : le clonage contrôle le workspace et l'import/export exclut cette
 référence locale. L'activité du pipeline par défaut est assurée par les services,
 pas par un trigger contre les écritures SQL directes. Ces limites ne sont pas
 transformées en changements de schéma pendant l'audit.
+
+## Initialisation métier explicite — Phase 5 (Emploi .NET uniquement)
+
+`POST /api/setup/initial-pipelines` est distinct de `POST /api/setup/bootstrap`.
+Il ne prend aucun paramètre ni corps et cible le workspace courant V1. Le bootstrap
+doit avoir créé le propriétaire/workspace au préalable. Aucun appel n'est effectué
+au démarrage de l'API ou automatiquement par le frontend.
+
+| Résultat | Contrat |
+| --- | --- |
+| 201 | Nouveau pipeline, `PipelineDto` et `Location` vers `GET /api/pipelines/{id}` |
+| 200 | Pipeline déjà initialisé, `PipelineDto` courant, étapes archivées comprises ; aucune écriture |
+| 409 | Workspace absent/multiple/inactif, homonyme non reconnu ou identifiant réservé occupé hors workspace ; `ProblemDetails` sans création |
+
+La seule configuration initiale est :
+
+- Nom : `Emploi .NET` ; type : `employment` ; visibilité : `true`.
+- Description : `Pipeline de prospection pour les offres d'emploi .NET / C#, principalement autour de Bordeaux et en remote France/Europe.`
+- Pipeline et étapes actifs, profil préféré null, descriptions d'étapes null.
+
+| SortOrder | Étape | Catégorie |
+| --- | --- | --- |
+| 0 | À analyser | active |
+| 1 | À candidater | active |
+| 2 | Candidature envoyée | active |
+| 3 | Entretien | active |
+| 4 | Offre | success |
+| 5 | Refusé | failure |
+| 6 | Abandonné | failure |
+
+### Identité et répétitions
+
+Le modèle existant ne comporte pas de marqueur de template et les noms ne sont pas
+uniques. L'initialiseur réserve donc un ID déterministe par workspace, stocké dans
+la PK existante, sans nouveau champ ni migration. La convention permanente est :
+SHA-256 des octets UTF-8 de
+`HellzDraft/ProspectionCrm/initial-pipelines/employment-dotnet/{workspaceId:D}`,
+16 premiers octets en ordre réseau, bits de version UUID 8 et variante RFC positionnés.
+Le workspace est formaté en GUID canonique minuscule. Cette clé ne doit jamais changer
+avec le nom, le contenu du template ou la version de l'application.
+
+Un pipeline portant cet ID dans le workspace est reconnu même après renommage,
+changement de type, modification/réordonnancement/archivage d'étapes ou archivage du
+pipeline. Aucun champ, timestamp, étape ou choix de défaut n'est réécrit. Un défaut
+retiré après la première création reste absent, même si le pipeline est encore actif.
+Les étapes gardent des GUID ordinaires générés à leur création.
+
+Avant la première création, un homonyme `Emploi .NET` avec un autre ID, actif ou
+archivé, provoque 409 : son nom ne prouve pas sa provenance et il n'est pas adopté.
+Les noms identiques restent autorisés par les routes CRUD ordinaires. Ce contrôle
+ne constitue pas une nouvelle contrainte d'unicité des noms. La garantie d'une seule
+instance initialisée repose sur l'ID réservé, pas sur le nom.
+
+Le clonage et l'import de Phase 4 génèrent de nouveaux IDs : ils ne transmettent
+pas l'identité d'initialisation. L'export portable n'est donc pas une sauvegarde de
+cette identité. Une suppression physique par SQL, hors API, effacerait le marqueur ;
+un appel ultérieur pourrait recréer le pipeline. Les opérations d'archivage normales
+conservent l'ID et ne provoquent jamais cette recréation.
+
+### Transaction, défaut et périmètre
+
+`InitialPipelineService` utilise `ICurrentWorkspaceProvider` et une transaction
+ReadCommitted. Il verrouille d'abord le workspace avec `FOR NO KEY UPDATE`, comme
+les opérations de cycle de vie/défaut, puis recherche l'ID réservé. Deux appels
+simultanés relisent l'état après attente : un seul crée, l'autre reconnaît l'existant.
+Le verrou reste compatible avec les vérifications FK `KEY SHARE` des clones.
+Il ne prend pas de verrou de pipeline existant et ne crée pas de cycle inverse
+pipeline → workspace. Les opérations explicites de choix du défaut utilisent le
+même verrou ; un défaut déjà choisi est conservé.
+
+La première sauvegarde insère le pipeline et ses sept étapes. Si le workspace
+n'a pas de défaut, une seconde sauvegarde le définit sur ce pipeline dans la même
+transaction. Toute erreur, y compris sur les étapes ou le défaut, annule l'ensemble.
+Le DTO est lu par `IPipelineService`, avec les contrats de lecture de Phase 4.
+
+`InitialPipelineTests` couvre création explicite après bootstrap, modèle EF inchangé,
+absence de données opérationnelles, répétitions sans écriture, modifications et
+archives préservées, défaut existant conservé, homonymes refusés, isolation,
+états workspace incompatibles, rollback et deux initialisations concurrentes.
+Les bases de tests sont jetables ; aucune initialisation n'est exécutée sur la base
+de développement par les tests.
+
+Cette livraison ne crée aucun autre pipeline initial et n'implémente aucun moteur
+de collecte/scoring/IA/automatisation, SavedSearch ou SourceConfiguration. Aucun
+modèle EF, snapshot ou migration n'est modifié.
 
 ```powershell
 dotnet build ProspectionCrm.slnx --configuration Release
