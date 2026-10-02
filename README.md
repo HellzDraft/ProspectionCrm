@@ -222,7 +222,7 @@ Il contrôle aussi l'absence de divergence modèle/snapshot EF. Pour le rejouer 
 dotnet test ProspectionCrm.slnx --configuration Release --filter FullyQualifiedName~Phase4ReconstructionTests
 ```
 
-### 8. Initialisation métier explicite — Phase 5, Emploi .NET
+### 8. Initialisation métier explicite — Phase 5.3, Emploi .NET et Freelance / Malt
 
 Après le bootstrap, appeler séparément :
 
@@ -230,18 +230,26 @@ Après le bootstrap, appeler séparément :
 Invoke-RestMethod -Method Post -Uri 'http://localhost:5016/api/setup/initial-pipelines'
 ```
 
-Cet endpoint sans corps crée uniquement « Emploi .NET » et ses sept étapes, puis le
-choisit comme défaut si aucun défaut n'existe. Il renvoie 201 avec le `PipelineDto`
-et un `Location` vers son détail, ou 200 s'il a déjà été initialisé. Les répétitions
-ne réinitialisent ni les modifications utilisateur ni un défaut retiré ensuite.
-Un pipeline homonyme non reconnu renvoie 409 sans écriture ; le renommer explicitement
-permet l'initialisation, sans adoption automatique. La stratégie d'identité stable,
-les conflits et la transaction sont détaillés dans [API Pipeline V1](docs/pipelines-v1.md).
+Cet endpoint sans corps initialise « Emploi .NET » et « Freelance / Malt », chacun
+avec sept étapes. Lors de la toute première initialisation, Emploi .NET devient
+le défaut uniquement si aucun défaut n'existe. La réponse `InitialPipelinesDto`
+contient `pipelines` (les deux configurations courantes, archives comprises) et
+`createdPipelineIds` (les IDs créés par cet appel). Le statut est 201 si au moins
+un pipeline a été créé, sinon 200 ; aucun `Location` vers un pipeline arbitraire.
+Ce DTO remplace le `PipelineDto` unique de Phase 5.2.
+
+Sur un workspace déjà initialisé en Phase 5.2, seul Freelance / Malt est ajouté :
+Emploi .NET, ses modifications et le choix de défaut restent inchangés, y compris
+un défaut retiré. Les appels suivants ne réinitialisent aucune donnée utilisateur.
+Un homonyme non reconnu renvoie 409 sans mutation partielle ; le renommer explicitement
+permet l'initialisation, sans adoption automatique. L'appel est atomique pour les
+deux templates. Identités, conflits et transaction sont détaillés dans
+[API Pipeline V1](docs/pipelines-v1.md).
 
 Le bootstrap technique crée toujours uniquement Owner + Workspace. Les migrations
 et le démarrage de l'API ne créent aucun pipeline. Cette livraison ajoute l'appel
-API explicite, sans appel automatique depuis Blazor. « Freelance/Malt », « Emploi Jeu
-Vidéo » et « Business Jeu Vidéo » restent reportés. Aucun moteur de collecte,
+API explicite, sans appel automatique depuis Blazor. « Emploi Jeu Vidéo » et
+« Business Jeu Vidéo » restent reportés. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
 ## Docker et n8n facultatif

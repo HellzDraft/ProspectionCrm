@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
+using ProspectionCrm.Api.Dtos.Pipelines;
 using ProspectionCrm.Api.Entities;
 
 namespace ProspectionCrm.Api.Services;
@@ -12,7 +13,21 @@ public sealed class InitialPipelineService(
     ICurrentWorkspaceProvider currentWorkspaceProvider,
     IPipelineService pipelineService) : IInitialPipelineService
 {
-    private const string InitialName = "Emploi .NET";
+    private sealed record Template(string Key, string Name, string TypeCode, string Description,
+        (string Name, string Category)[] Stages);
+
+    // Permanent identity keys, independent of mutable template content. Employment stays first.
+    private static readonly Template[] Templates =
+    [
+        new("employment-dotnet", "Emploi .NET", "employment",
+            "Pipeline de prospection pour les offres d'emploi .NET / C#, principalement autour de Bordeaux et en remote France/Europe.",
+            [("À analyser", "active"), ("À candidater", "active"), ("Candidature envoyée", "active"),
+             ("Entretien", "active"), ("Offre", "success"), ("Refusé", "failure"), ("Abandonné", "failure")]),
+        new("freelance-malt", "Freelance / Malt", "freelance",
+            "Pipeline de prospection pour les missions freelance C# / .NET / ASP.NET Core et Unity, principalement en remote ou autour de Bordeaux.",
+            [("À analyser", "active"), ("À contacter", "active"), ("Proposition envoyée", "active"),
+             ("Échange client", "active"), ("Mission gagnée", "success"), ("Refusée / perdue", "failure"), ("Abandonnée", "failure")])
+    ];
 
     public async Task<InitialPipelineResult> InitializeAsync(CancellationToken cancellationToken)
     {
@@ -34,52 +49,60 @@ public sealed class InitialPipelineService(
         if (workspace is null || workspace.ArchivedAt is not null)
             return new(Error: "The current workspace is no longer active.");
 
-        var pipelineId = GetEmploymentPipelineId(workspaceId);
-        var existing = await dbContext.Pipelines.AsNoTracking().SingleOrDefaultAsync(x => x.Id == pipelineId, cancellationToken);
-        if (existing is not null)
+        var initial = Templates.Select(template => (Template: template, Id: GetPipelineId(workspaceId, template.Key))).ToArray();
+        var missing = new List<(Template Template, Guid Id)>();
+        // Validate all identities and conflicts before tracking or inserting any new configuration.
+        foreach (var item in initial)
         {
-            if (existing.WorkspaceId != workspaceId)
-                return new(Error: "The reserved initial pipeline identifier is already in use.");
-            // Identity, not mutable template fields, records initialization. Never repair or reset it.
-            var dto = await pipelineService.GetByIdAsync(pipelineId, includeArchivedStages: true, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new(dto);
-        }
-        if (await dbContext.Pipelines.AnyAsync(x => x.WorkspaceId == workspaceId && x.Name == InitialName, cancellationToken))
-            return new(Error: "A pipeline named 'Emploi .NET' already exists but was not created by this initializer. Rename it explicitly before initializing; no existing pipeline was adopted or changed.");
-
-        var stages = new (string Name, string Category)[]
-        {
-            ("À analyser", "active"), ("À candidater", "active"), ("Candidature envoyée", "active"),
-            ("Entretien", "active"), ("Offre", "success"), ("Refusé", "failure"), ("Abandonné", "failure")
-        };
-        dbContext.Pipelines.Add(new Pipeline
-        {
-            Id = pipelineId, WorkspaceId = workspaceId, Name = InitialName, TypeCode = "employment", IsVisible = true,
-            Description = "Pipeline de prospection pour les offres d'emploi .NET / C#, principalement autour de Bordeaux et en remote France/Europe.",
-            Stages = stages.Select((stage, position) => new PipelineStage
+            var existing = await dbContext.Pipelines.AsNoTracking().SingleOrDefaultAsync(x => x.Id == item.Id, cancellationToken);
+            if (existing is not null)
             {
-                Name = stage.Name, CategoryCode = stage.Category, SortOrder = position
-            }).ToList()
-        });
-        // Persist the principal first: the workspace's composite default FK is immediate.
-        await dbContext.SaveChangesAsync(cancellationToken);
-        if (workspace.DefaultPipelineId is null)
-        {
-            workspace.DefaultPipelineId = pipelineId;
-            workspace.UpdatedAt = DateTimeOffset.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
+                if (existing.WorkspaceId != workspaceId)
+                    return new(Error: "The reserved initial pipeline identifier is already in use.");
+                // Identity records initialization. Never repair mutable fields, stages or archives.
+                continue;
+            }
+            if (await dbContext.Pipelines.AnyAsync(x => x.WorkspaceId == workspaceId && x.Name == item.Template.Name, cancellationToken))
+                return new(Error: $"A pipeline named '{item.Template.Name}' already exists but was not created by this initializer. Rename it explicitly before initializing; no existing pipeline was adopted or changed.");
+            missing.Add(item);
         }
-        var created = await pipelineService.GetByIdAsync(pipelineId, includeArchivedStages: true, cancellationToken);
+
+        foreach (var item in missing)
+        {
+            dbContext.Pipelines.Add(new Pipeline
+            {
+                Id = item.Id, WorkspaceId = workspaceId, Name = item.Template.Name,
+                TypeCode = item.Template.TypeCode, IsVisible = true, Description = item.Template.Description,
+                Stages = item.Template.Stages.Select((stage, position) => new PipelineStage
+                {
+                    Name = stage.Name, CategoryCode = stage.Category, SortOrder = position
+                }).ToList()
+            });
+        }
+        if (missing.Count > 0)
+        {
+            // Persist principals first: the workspace's composite default FK is immediate.
+            await dbContext.SaveChangesAsync(cancellationToken);
+            // A previous initialization (including Phase 5.2) permanently leaves default choice to the user.
+            if (missing.Count == initial.Length && workspace.DefaultPipelineId is null)
+            {
+                workspace.DefaultPipelineId = initial[0].Id;
+                workspace.UpdatedAt = DateTimeOffset.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        var pipelines = new List<PipelineDto>();
+        foreach (var item in initial)
+            pipelines.Add((await pipelineService.GetByIdAsync(item.Id, includeArchivedStages: true, cancellationToken))!);
         await transaction.CommitAsync(cancellationToken);
-        return new(created, Created: true);
+        return new(new(pipelines, missing.Select(item => item.Id).ToArray()));
     }
 
     // Permanent UUIDv8 identity convention. Never change this key when editing the initial template.
     // Names, archive flags, stages and the selected default are deliberately not part of the key.
-    private static Guid GetEmploymentPipelineId(Guid workspaceId)
+    private static Guid GetPipelineId(Guid workspaceId, string templateKey)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"HellzDraft/ProspectionCrm/initial-pipelines/employment-dotnet/{workspaceId:D}"));
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"HellzDraft/ProspectionCrm/initial-pipelines/{templateKey}/{workspaceId:D}"));
         hash[6] = (byte)((hash[6] & 0x0f) | 0x80);
         hash[8] = (byte)((hash[8] & 0x3f) | 0x80);
         return new Guid(hash.AsSpan(0, 16), bigEndian: true);

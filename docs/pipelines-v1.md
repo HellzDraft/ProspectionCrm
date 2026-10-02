@@ -439,15 +439,15 @@ d'un archivage déjà engagé, et compatibilité entre affectations simultanées
 indépendance des écritures sur un autre pipeline. Les quatre premiers cas ont
 reproduit le défaut avant correction. Les contrats HTTP restent inchangés.
 
-Les pipelines initiaux relèvent de Phase 5 ; seul Emploi .NET est maintenant
-disponible via l'appel explicite décrit ci-dessous. Aucun n'est créé au démarrage,
+Les pipelines initiaux relèvent de Phase 5 ; Emploi .NET et Freelance / Malt sont
+maintenant disponibles via l'appel explicite décrit ci-dessous. Aucun n'est créé au démarrage,
 par le bootstrap ou par les migrations. La FK simple du profil préféré reste une limite
 connue du modèle : le clonage contrôle le workspace et l'import/export exclut cette
 référence locale. L'activité du pipeline par défaut est assurée par les services,
 pas par un trigger contre les écritures SQL directes. Ces limites ne sont pas
 transformées en changements de schéma pendant l'audit.
 
-## Initialisation métier explicite — Phase 5 (Emploi .NET uniquement)
+## Initialisation métier explicite — Phase 5.3 (Emploi .NET et Freelance / Malt)
 
 `POST /api/setup/initial-pipelines` est distinct de `POST /api/setup/bootstrap`.
 Il ne prend aucun paramètre ni corps et cible le workspace courant V1. Le bootstrap
@@ -456,11 +456,22 @@ au démarrage de l'API ou automatiquement par le frontend.
 
 | Résultat | Contrat |
 | --- | --- |
-| 201 | Nouveau pipeline, `PipelineDto` et `Location` vers `GET /api/pipelines/{id}` |
-| 200 | Pipeline déjà initialisé, `PipelineDto` courant, étapes archivées comprises ; aucune écriture |
+| 201 | Au moins un pipeline créé ; `InitialPipelinesDto` |
+| 200 | Tous les pipelines déjà initialisés ; même DTO avec `createdPipelineIds` vide ; aucune écriture |
 | 409 | Workspace absent/multiple/inactif, homonyme non reconnu ou identifiant réservé occupé hors workspace ; `ProblemDetails` sans création |
 
-La seule configuration initiale est :
+Le DTO contient :
+
+- `pipelines` : les `PipelineDto` courants, dans l'ordre Emploi .NET puis Freelance / Malt,
+  y compris les pipelines et étapes archivés ; les noms/propriétés peuvent avoir été modifiés.
+- `createdPipelineIds` : uniquement les IDs créés pendant cet appel, dans le même ordre.
+
+Ce contrat remplace le corps `PipelineDto` unique de Phase 5.2. Aucun en-tête
+`Location` n'est émis pour cette initialisation multiple ; chaque pipeline reste
+consultable par `GET /api/pipelines/{id}`. Les futurs templates pourront compléter
+la collection sans modifier la structure du DTO.
+
+### Emploi .NET (inchangé depuis Phase 5.2)
 
 - Nom : `Emploi .NET` ; type : `employment` ; visibilité : `true`.
 - Description : `Pipeline de prospection pour les offres d'emploi .NET / C#, principalement autour de Bordeaux et en remote France/Europe.`
@@ -476,14 +487,41 @@ La seule configuration initiale est :
 | 5 | Refusé | failure |
 | 6 | Abandonné | failure |
 
+### Freelance / Malt
+
+- Nom : `Freelance / Malt` ; type : `freelance` ; visibilité : `true`.
+- Description : `Pipeline de prospection pour les missions freelance C# / .NET / ASP.NET Core et Unity, principalement en remote ou autour de Bordeaux.`
+- Pipeline et étapes actifs, profil préféré null, descriptions d'étapes null.
+- Ne devient jamais automatiquement le défaut.
+
+| SortOrder | Étape | Catégorie |
+| --- | --- | --- |
+| 0 | À analyser | active |
+| 1 | À contacter | active |
+| 2 | Proposition envoyée | active |
+| 3 | Échange client | active |
+| 4 | Mission gagnée | success |
+| 5 | Refusée / perdue | failure |
+| 6 | Abandonnée | failure |
+
 ### Identité et répétitions
 
 Le modèle existant ne comporte pas de marqueur de template et les noms ne sont pas
-uniques. L'initialiseur réserve donc un ID déterministe par workspace, stocké dans
+uniques. L'initialiseur réserve donc un ID déterministe par template et workspace, stocké dans
 la PK existante, sans nouveau champ ni migration. La convention permanente est :
-SHA-256 des octets UTF-8 de
-`HellzDraft/ProspectionCrm/initial-pipelines/employment-dotnet/{workspaceId:D}`,
-16 premiers octets en ordre réseau, bits de version UUID 8 et variante RFC positionnés.
+SHA-256 des octets UTF-8 des clés suivantes :
+
+- `HellzDraft/ProspectionCrm/initial-pipelines/employment-dotnet/{workspaceId:D}` (inchangée) ;
+- `HellzDraft/ProspectionCrm/initial-pipelines/freelance-malt/{workspaceId:D}`.
+
+Les 16 premiers octets sont lus en ordre réseau (`bigEndian: true`), avec
+`hash[6] = (hash[6] & 0x0f) | 0x80` (UUIDv8) et
+`hash[8] = (hash[8] & 0x3f) | 0x80` (variante RFC).
+Pour le workspace `11111111-2222-3333-4444-555555555555`, les vecteurs figés sont :
+
+- Emploi .NET : `a30b7775-d6de-8404-adb7-d7f12a07d164` ;
+- Freelance / Malt : `facae35b-9c73-8a26-b928-aa1767b5d199`.
+
 Le workspace est formaté en GUID canonique minuscule. Cette clé ne doit jamais changer
 avec le nom, le contenu du template ou la version de l'application.
 
@@ -493,8 +531,8 @@ pipeline. Aucun champ, timestamp, étape ou choix de défaut n'est réécrit. Un
 retiré après la première création reste absent, même si le pipeline est encore actif.
 Les étapes gardent des GUID ordinaires générés à leur création.
 
-Avant la première création, un homonyme `Emploi .NET` avec un autre ID, actif ou
-archivé, provoque 409 : son nom ne prouve pas sa provenance et il n'est pas adopté.
+Pour chaque template absent, un homonyme `Emploi .NET` ou `Freelance / Malt`
+avec un autre ID, actif ou archivé, provoque 409 : son nom ne prouve pas sa provenance et il n'est pas adopté.
 Les noms identiques restent autorisés par les routes CRUD ordinaires. Ce contrôle
 ne constitue pas une nouvelle contrainte d'unicité des noms. La garantie d'une seule
 instance initialisée repose sur l'ID réservé, pas sur le nom.
@@ -509,26 +547,45 @@ conservent l'ID et ne provoquent jamais cette recréation.
 
 `InitialPipelineService` utilise `ICurrentWorkspaceProvider` et une transaction
 ReadCommitted. Il verrouille d'abord le workspace avec `FOR NO KEY UPDATE`, comme
-les opérations de cycle de vie/défaut, puis recherche l'ID réservé. Deux appels
+les opérations de cycle de vie/défaut, puis recherche les IDs réservés. Deux appels
 simultanés relisent l'état après attente : un seul crée, l'autre reconnaît l'existant.
 Le verrou reste compatible avec les vérifications FK `KEY SHARE` des clones.
 Il ne prend pas de verrou de pipeline existant et ne crée pas de cycle inverse
 pipeline → workspace. Les opérations explicites de choix du défaut utilisent le
 même verrou ; un défaut déjà choisi est conservé.
 
-La première sauvegarde insère le pipeline et ses sept étapes. Si le workspace
-n'a pas de défaut, une seconde sauvegarde le définit sur ce pipeline dans la même
-transaction. Toute erreur, y compris sur les étapes ou le défaut, annule l'ensemble.
-Le DTO est lu par `IPipelineService`, avec les contrats de lecture de Phase 4.
+Tous les IDs et homonymes sont contrôlés avant toute insertion. La première
+sauvegarde insère uniquement les pipelines absents et leurs sept étapes chacun.
+Si aucune identité initiale n'existait avant l'appel et que le workspace n'a pas
+de défaut, une seconde sauvegarde choisit Emploi .NET dans la même transaction.
+Tout défaut utilisateur existant est conservé. Toute erreur, y compris sur le
+pipeline Freelance / Malt, ses étapes ou le défaut, annule les créations de l'appel.
+Les DTO sont lus par `IPipelineService`, avec les contrats de lecture de Phase 4.
 
-`InitialPipelineTests` couvre création explicite après bootstrap, modèle EF inchangé,
-absence de données opérationnelles, répétitions sans écriture, modifications et
-archives préservées, défaut existant conservé, homonymes refusés, isolation,
-états workspace incompatibles, rollback et deux initialisations concurrentes.
+### Upgrade depuis Phase 5.2
+
+L'ID réservé d'Emploi .NET suffit à reconnaître une initialisation antérieure,
+même si son nom, son type, sa visibilité, sa description, ses étapes ou ses archives
+ont changé. Seul Freelance / Malt est créé ; `createdPipelineIds` contient son ID
+et `pipelines` contient les deux DTO. Aucune donnée métier préexistante ni timestamp
+n'est réécrit. Le workspace et son défaut restent intacts, même si ce défaut a été
+retiré, changé ou supprimé par l'archivage d'Emploi .NET. Une erreur ou un conflit
+sur Freelance / Malt laisse l'état Phase 5.2 intact. Après un upgrade réussi,
+les appels suivants sont entièrement idempotents (200).
+
+`InitialPipelineTests` couvre les configurations exactes, le bootstrap/démarrage
+sans pipeline implicite, le modèle EF inchangé, l'absence de données opérationnelles,
+les répétitions, modifications/réordonnancements/archives préservés pour les deux
+templates, les upgrades Phase 5.2 avec plusieurs états du défaut, les deux vecteurs
+d'identité, les homonymes, les IDs occupés hors workspace, l'isolation, le rollback
+à la création du pipeline Freelance ou de ses étapes (installation et upgrade),
+et deux initialisations concurrentes avec défaut absent, préexistant ou choisi
+pendant l'attente.
 Les bases de tests sont jetables ; aucune initialisation n'est exécutée sur la base
 de développement par les tests.
 
-Cette livraison ne crée aucun autre pipeline initial et n'implémente aucun moteur
+Emploi Jeu Vidéo et Business Jeu Vidéo restent à venir. Cette livraison
+n'implémente aucun moteur
 de collecte/scoring/IA/automatisation, SavedSearch ou SourceConfiguration. Aucun
 modèle EF, snapshot ou migration n'est modifié.
 

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using ProspectionCrm.Api.Dtos.Setup;
-using ProspectionCrm.Api.Dtos.Pipelines;
 using ProspectionCrm.Api.Services;
 
 namespace ProspectionCrm.Api.Controllers;
@@ -10,17 +9,17 @@ namespace ProspectionCrm.Api.Controllers;
 public class SetupController(IBootstrapService bootstrapService, IInitialPipelineService initialPipelineService) : ControllerBase
 {
     [HttpPost("initial-pipelines")]
-    [ProducesResponseType<PipelineDto>(StatusCodes.Status201Created)]
-    [ProducesResponseType<PipelineDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<InitialPipelinesDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<InitialPipelinesDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<PipelineDto>> InitializePipelines(CancellationToken cancellationToken)
+    public async Task<ActionResult<InitialPipelinesDto>> InitializePipelines(CancellationToken cancellationToken)
     {
         var result = await initialPipelineService.InitializeAsync(cancellationToken);
         if (result.Error is not null)
             return Problem(statusCode: StatusCodes.Status409Conflict, title: "Initial pipeline setup conflict", detail: result.Error);
-        return result.Created
-            ? CreatedAtAction(nameof(PipelinesController.GetById), "Pipelines", new { id = result.Pipeline!.Id }, result.Pipeline)
-            : Ok(result.Pipeline);
+        return result.Result!.CreatedPipelineIds.Count > 0
+            ? StatusCode(StatusCodes.Status201Created, result.Result)
+            : Ok(result.Result);
     }
 
     [HttpPost("bootstrap")]
