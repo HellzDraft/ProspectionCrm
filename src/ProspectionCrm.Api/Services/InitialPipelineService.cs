@@ -26,7 +26,11 @@ public sealed class InitialPipelineService(
         new("freelance-malt", "Freelance / Malt", "freelance",
             "Pipeline de prospection pour les missions freelance C# / .NET / ASP.NET Core et Unity, principalement en remote ou autour de Bordeaux.",
             [("À analyser", "active"), ("À contacter", "active"), ("Proposition envoyée", "active"),
-             ("Échange client", "active"), ("Mission gagnée", "success"), ("Refusée / perdue", "failure"), ("Abandonnée", "failure")])
+             ("Échange client", "active"), ("Mission gagnée", "success"), ("Refusée / perdue", "failure"), ("Abandonnée", "failure")]),
+        new("employment-game-dev", "Emploi Jeu Vidéo", "employment",
+            "Pipeline de prospection pour les offres d'emploi jeu vidéo Unity / C#, principalement en France ou en remote Europe.",
+            [("À analyser", "active"), ("À candidater", "active"), ("Candidature envoyée", "active"),
+             ("Entretien", "active"), ("Offre", "success"), ("Refusé", "failure"), ("Abandonné", "failure")])
     ];
 
     public async Task<InitialPipelineResult> InitializeAsync(CancellationToken cancellationToken)

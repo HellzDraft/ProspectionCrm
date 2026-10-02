@@ -439,15 +439,15 @@ d'un archivage déjà engagé, et compatibilité entre affectations simultanées
 indépendance des écritures sur un autre pipeline. Les quatre premiers cas ont
 reproduit le défaut avant correction. Les contrats HTTP restent inchangés.
 
-Les pipelines initiaux relèvent de Phase 5 ; Emploi .NET et Freelance / Malt sont
-maintenant disponibles via l'appel explicite décrit ci-dessous. Aucun n'est créé au démarrage,
+Les pipelines initiaux relèvent de Phase 5 ; Emploi .NET, Freelance / Malt et
+Emploi Jeu Vidéo sont maintenant disponibles via l'appel explicite décrit ci-dessous. Aucun n'est créé au démarrage,
 par le bootstrap ou par les migrations. La FK simple du profil préféré reste une limite
 connue du modèle : le clonage contrôle le workspace et l'import/export exclut cette
 référence locale. L'activité du pipeline par défaut est assurée par les services,
 pas par un trigger contre les écritures SQL directes. Ces limites ne sont pas
 transformées en changements de schéma pendant l'audit.
 
-## Initialisation métier explicite — Phase 5.3 (Emploi .NET et Freelance / Malt)
+## Initialisation métier explicite — Phase 5.4 (trois pipelines)
 
 `POST /api/setup/initial-pipelines` est distinct de `POST /api/setup/bootstrap`.
 Il ne prend aucun paramètre ni corps et cible le workspace courant V1. Le bootstrap
@@ -462,7 +462,8 @@ au démarrage de l'API ou automatiquement par le frontend.
 
 Le DTO contient :
 
-- `pipelines` : les `PipelineDto` courants, dans l'ordre Emploi .NET puis Freelance / Malt,
+- `pipelines` : les `PipelineDto` courants, dans l'ordre Emploi .NET, Freelance / Malt,
+  puis Emploi Jeu Vidéo,
   y compris les pipelines et étapes archivés ; les noms/propriétés peuvent avoir été modifiés.
 - `createdPipelineIds` : uniquement les IDs créés pendant cet appel, dans le même ordre.
 
@@ -504,6 +505,27 @@ la collection sans modifier la structure du DTO.
 | 5 | Refusée / perdue | failure |
 | 6 | Abandonnée | failure |
 
+### Emploi Jeu Vidéo
+
+- Nom : `Emploi Jeu Vidéo` ; type : `employment` ; visibilité : `true`.
+- Description : `Pipeline de prospection pour les offres d'emploi jeu vidéo Unity / C#, principalement en France ou en remote Europe.`
+- Pipeline et étapes actifs, profil préféré null, descriptions d'étapes null.
+- Ne devient jamais automatiquement le défaut.
+
+| SortOrder | Étape | Catégorie |
+| --- | --- | --- |
+| 0 | À analyser | active |
+| 1 | À candidater | active |
+| 2 | Candidature envoyée | active |
+| 3 | Entretien | active |
+| 4 | Offre | success |
+| 5 | Refusé | failure |
+| 6 | Abandonné | failure |
+
+La première installation crée les trois pipelines et leurs 21 étapes atomiquement.
+`createdPipelineIds` contient alors les trois IDs dans le même ordre que `pipelines`.
+Seul Emploi .NET devient défaut si aucun défaut ni aucune identité initiale n'existait.
+
 ### Identité et répétitions
 
 Le modèle existant ne comporte pas de marqueur de template et les noms ne sont pas
@@ -512,7 +534,8 @@ la PK existante, sans nouveau champ ni migration. La convention permanente est :
 SHA-256 des octets UTF-8 des clés suivantes :
 
 - `HellzDraft/ProspectionCrm/initial-pipelines/employment-dotnet/{workspaceId:D}` (inchangée) ;
-- `HellzDraft/ProspectionCrm/initial-pipelines/freelance-malt/{workspaceId:D}`.
+- `HellzDraft/ProspectionCrm/initial-pipelines/freelance-malt/{workspaceId:D}` (inchangée) ;
+- `HellzDraft/ProspectionCrm/initial-pipelines/employment-game-dev/{workspaceId:D}`.
 
 Les 16 premiers octets sont lus en ordre réseau (`bigEndian: true`), avec
 `hash[6] = (hash[6] & 0x0f) | 0x80` (UUIDv8) et
@@ -520,7 +543,8 @@ Les 16 premiers octets sont lus en ordre réseau (`bigEndian: true`), avec
 Pour le workspace `11111111-2222-3333-4444-555555555555`, les vecteurs figés sont :
 
 - Emploi .NET : `a30b7775-d6de-8404-adb7-d7f12a07d164` ;
-- Freelance / Malt : `facae35b-9c73-8a26-b928-aa1767b5d199`.
+- Freelance / Malt : `facae35b-9c73-8a26-b928-aa1767b5d199` ;
+- Emploi Jeu Vidéo : `66d1f9d1-d3fc-816b-b2b7-c32a9c45604e`.
 
 Le workspace est formaté en GUID canonique minuscule. Cette clé ne doit jamais changer
 avec le nom, le contenu du template ou la version de l'application.
@@ -531,7 +555,7 @@ pipeline. Aucun champ, timestamp, étape ou choix de défaut n'est réécrit. Un
 retiré après la première création reste absent, même si le pipeline est encore actif.
 Les étapes gardent des GUID ordinaires générés à leur création.
 
-Pour chaque template absent, un homonyme `Emploi .NET` ou `Freelance / Malt`
+Pour chaque template absent, un homonyme `Emploi .NET`, `Freelance / Malt` ou `Emploi Jeu Vidéo`
 avec un autre ID, actif ou archivé, provoque 409 : son nom ne prouve pas sa provenance et il n'est pas adopté.
 Les noms identiques restent autorisés par les routes CRUD ordinaires. Ce contrôle
 ne constitue pas une nouvelle contrainte d'unicité des noms. La garantie d'une seule
@@ -559,34 +583,43 @@ sauvegarde insère uniquement les pipelines absents et leurs sept étapes chacun
 Si aucune identité initiale n'existait avant l'appel et que le workspace n'a pas
 de défaut, une seconde sauvegarde choisit Emploi .NET dans la même transaction.
 Tout défaut utilisateur existant est conservé. Toute erreur, y compris sur le
-pipeline Freelance / Malt, ses étapes ou le défaut, annule les créations de l'appel.
+troisième pipeline, ses étapes ou le défaut, annule les créations de l'appel.
 Les DTO sont lus par `IPipelineService`, avec les contrats de lecture de Phase 4.
 
-### Upgrade depuis Phase 5.2
+### Upgrade Phase 5.3 → 5.4
 
-L'ID réservé d'Emploi .NET suffit à reconnaître une initialisation antérieure,
-même si son nom, son type, sa visibilité, sa description, ses étapes ou ses archives
-ont changé. Seul Freelance / Malt est créé ; `createdPipelineIds` contient son ID
-et `pipelines` contient les deux DTO. Aucune donnée métier préexistante ni timestamp
-n'est réécrit. Le workspace et son défaut restent intacts, même si ce défaut a été
-retiré, changé ou supprimé par l'archivage d'Emploi .NET. Une erreur ou un conflit
-sur Freelance / Malt laisse l'état Phase 5.2 intact. Après un upgrade réussi,
-les appels suivants sont entièrement idempotents (200).
+Les IDs réservés reconnaissent Emploi .NET et Freelance / Malt même après renommage,
+modification ou archivage. Seul Emploi Jeu Vidéo est créé, avec ses sept étapes.
+La réponse 201 conserve la structure `InitialPipelinesDto` : `pipelines` contient
+les trois DTO dans l'ordre contractuel, et `createdPipelineIds` contient uniquement
+l'ID d'Emploi Jeu Vidéo. Aucun champ, étape, archive ou timestamp préexistant n'est
+réécrit. Le défaut reste strictement inchangé : Emploi .NET, autre choix utilisateur
+ou absence de défaut. L'upgrade ne choisit jamais automatiquement un défaut.
+
+Un homonyme du troisième template (actif ou archivé) ou une erreur d'insertion
+laisse tout l'état Phase 5.3 intact. Après un upgrade réussi, les appels suivants
+renvoient 200 avec `createdPipelineIds` vide, sans écriture. Deux upgrades simultanés
+créent exactement un Emploi Jeu Vidéo : un résultat annonce sa création, l'autre non.
+
+Un upgrade direct depuis Phase 5.2 reste possible : seuls Freelance / Malt et
+Emploi Jeu Vidéo sont créés, sans modifier Emploi .NET ni le défaut du workspace.
+Les deux IDs créés apparaissent dans `createdPipelineIds`, dans cet ordre.
 
 `InitialPipelineTests` couvre les configurations exactes, le bootstrap/démarrage
 sans pipeline implicite, le modèle EF inchangé, l'absence de données opérationnelles,
-les répétitions, modifications/réordonnancements/archives préservés pour les deux
-templates, les upgrades Phase 5.2 avec plusieurs états du défaut, les deux vecteurs
-d'identité, les homonymes, les IDs occupés hors workspace, l'isolation, le rollback
-à la création du pipeline Freelance ou de ses étapes (installation et upgrade),
-et deux initialisations concurrentes avec défaut absent, préexistant ou choisi
-pendant l'attente.
+les répétitions et modifications/réordonnancements/archives pour les trois templates,
+les upgrades Phase 5.2 et Phase 5.3 avec plusieurs états du défaut, les trois vecteurs
+d'identité, les homonymes, les IDs occupés hors workspace et l'isolation. Les tests
+provoquent aussi des erreurs sur le pipeline Emploi Jeu Vidéo et ses étapes, sur
+installation vierge et en upgrade, pour vérifier le rollback complet. La concurrence
+est vérifiée sur installation vierge et en upgrade Phase 5.3, avec défaut absent,
+préexistant ou choisi pendant l'attente.
 Les bases de tests sont jetables ; aucune initialisation n'est exécutée sur la base
 de développement par les tests.
 
-Emploi Jeu Vidéo et Business Jeu Vidéo restent à venir. Cette livraison
-n'implémente aucun moteur
-de collecte/scoring/IA/automatisation, SavedSearch ou SourceConfiguration. Aucun
+Business Jeu Vidéo reste à venir en Phase 5.5. Cette livraison n'implémente
+aucune collecte, scoring, règle de mots-clés, exclusion AAA, IA, automatisation,
+SavedSearch, SourceConfiguration ou interface Blazor spécifique. Aucun
 modèle EF, snapshot ou migration n'est modifié.
 
 ```powershell
