@@ -49,29 +49,39 @@ public class CompanyService(ProspectionCrmDbContext dbContext, ICurrentWorkspace
         Guid id, UpdateCompanyRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
         var company = await dbContext.Companies
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (company is null)
             return false;
+        await dbContext.Entry(company).ReloadAsync(cancellationToken);
+        if (dbContext.Entry(company).State == EntityState.Detached) return false;
 
         company.Name = request.Name;
         company.Website = request.Website;
         company.Location = request.Location;
         company.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
         var company = await dbContext.Companies
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (company is null)
             return false;
+        await dbContext.Entry(company).ReloadAsync(cancellationToken);
+        if (dbContext.Entry(company).State == EntityState.Detached) return false;
 
         dbContext.Companies.Remove(company);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 

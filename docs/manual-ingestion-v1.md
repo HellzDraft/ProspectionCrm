@@ -1,4 +1,4 @@
-# Ingestion manuelle de résultats — Phases 6.1 et 6.2.1
+# Ingestion manuelle de résultats — Phases 6.1 à 6.2.2
 
 Cette route reçoit des résultats déjà fournis par le client. Elle n'exécute aucune
 recherche réseau, collecte planifiée ou automatisation. La configuration et la
@@ -36,18 +36,19 @@ non archivées et `Enabled = true`, dans le workspace courant.
 | `title` | Obligatoire, non blanc, maximum 200 caractères |
 | `externalId` | Facultatif, non blanc si fourni, maximum 500 ; opaque et sensible à la casse |
 | `sourceUrl` | Facultative, maximum 2048 ; URL HTTP(S) absolue sans identifiants utilisateur |
-| `companyName` | Facultatif, non blanc si fourni, maximum 200 ; comparaison uniquement |
+| `companyName` | Facultatif, non blanc si fourni, maximum 200 ; comparaison métier et historique |
 | `location` | Facultative, maximum 200 |
 | `description` | Facultative, maximum 10000 ; stockée dans `Opportunity.Notes` à la création seulement |
 
 Chaque élément doit fournir au moins `externalId`, `sourceUrl` ou `companyName`.
 Un couple titre/société sans URL ni identifiant peut retrouver une opportunité
 existante ; s'il ne la retrouve pas, le lot échoue en 409 `MissingPersistentIdentity`.
-Il n'existe aucun champ société libre sur Opportunity : une nouvelle opportunité
-doit donc disposer d'une URL ou d'un identifiant externe pour être reconnue au rejeu.
+Une création exige toujours une URL ou un identifiant externe. Le titre/société reçu
+est conservé dans SourceExecutionItem et peut désormais retrouver cette opportunité
+lors d'un élément ultérieur ou d'un prochain lot, même sans Company liée.
 
 Aucune Company n'est créée ni affectée à partir de son nom. Pour la déduplication,
-`CompanyName` ne sert qu'à comparer le nom de la Company déjà liée aux opportunités existantes. Plusieurs
+`CompanyName` compare le nom de la Company liée et les observations historiques réussies. Plusieurs
 sociétés peuvent avoir le même nom ; plusieurs opportunités candidates produisent
 un conflit. Le titre seul, ou titre + société absente, n'est jamais une identité.
 
@@ -118,8 +119,9 @@ de contrôle, antislashs, URL relatives et identifiants utilisateur sont refusé
 Le chemin, la query et le fragment restent inchangés : casse, ordre des paramètres,
 paramètres de suivi, encodage pourcent, slash final et port explicite sont conservés.
 Pas de décodage, résolution de redirection, ajout de slash ou suppression de fragment.
-Les URL déjà stockées sont comparées avec la même fonction mais jamais réécrites.
-Une ancienne URL invalide ne participe pas à la comparaison URL.
+OpportunitySource conserve désormais la clé NormalizedSourceUrl calculée avec cette
+fonction. L'ingestion compare directement cette clé persistée. Une URL legacy invalide
+bloque la migration ; elle n'est ni ignorée ni réécrite.
 
 Titre/société : `Trim()`, remplacement de chaque suite d'espaces reconnus par
 `\s` par un espace ASCII, puis `ToUpperInvariant()`. Ni suppression d'accents,
@@ -130,9 +132,10 @@ ExternalId est comparé exactement, sans trim ni changement de casse.
 La recherche couvre **tout le workspace**, toutes les étapes/pipelines et les
 opportunités archivées. Ordre de priorité :
 
-1. `(SourceConfigurationId, ExternalId)` ;
-2. URL normalisée des OpportunitySource ;
-3. titre normalisé + nom normalisé de la Company liée, dans le même workspace.
+1. `(WorkspaceId, SourceConfigurationId, ExternalId)` exact ;
+2. `(WorkspaceId, NormalizedSourceUrl)` ;
+3. titre/société normalisés issus de la Company actuelle, de l’historique réussi
+   avec OpportunityId vivant, et du registre du lot.
 
 Toutes les identités disponibles sont examinées. Si leur union désigne plusieurs
 opportunités, même avec un ExternalId valide, le résultat est un 409
@@ -158,8 +161,9 @@ ExternalId accompagne cette URL, une provenance portant cet ExternalId et une UR
 null est ajoutée ; la provenance URL existante est conservée et observée.
 Sans nouvel ExternalId, seule la provenance URL existante est observée.
 
-Pour une redécouverte par titre/société seul, une provenance sans ExternalId ni URL
-est créée ou réutilisée pour cette opportunité/configuration.
+Une redécouverte par titre/société seul ne crée ni ne réobserve de provenance vide.
+SourceExecutionItem porte cette décision ; aucun lien SourceExecutionItemSource
+n’est requis. Les anciens marqueurs null/null restent inchangés en base.
 
 Sur OpportunitySource, `SourceExecutionId` et `SavedSearchId` restent les références
 de première création de la provenance, pas celles de sa dernière observation.
@@ -171,8 +175,8 @@ SourceExecutionItem et SourceExecutionItemSource.
 `IngestionService` possède une transaction PostgreSQL **ReadCommitted** couvrant
 le lot ; il ne chaîne pas les services CRUD existants.
 
-Un verrou transactionnel consultatif `pg_advisory_xact_lock` sérialise les seules
-ingestions d'un même workspace. Sa clé est constituée des huit premiers octets
+Un verrou transactionnel consultatif `pg_advisory_xact_lock` sérialise les ingestions
+et les écritures coopératives d'identité d'un même workspace. Sa clé est constituée des huit premiers octets
 SHA-256, lus en Int64 big-endian, de
 `ProspectionCrm/manual-ingestion/{workspaceId:D}`. Ce périmètre correspond à celui
 de la déduplication, y compris entre recherches et configurations différentes.
@@ -184,11 +188,15 @@ sont relues après attente. Le verrou parent protège la sélection d'étape fac
 services d'archivage/réordonnancement de Phase 4. Aucune ligne Opportunity existante
 n'est modifiée et aucun verrou workspace `FOR NO KEY UPDATE` n'est ajouté.
 
-Les requêtes CRUD historiques et SQL externes ne prennent pas le verrou consultatif.
-Les index uniques de provenance restent la dernière protection pour les identités
-qu'ils couvrent : une violation `23505` de l'un de leurs deux noms connus devient
-409 `ConcurrentIdentityChange`, sans retry. La garantie complète de sérialisation
-de déduplication porte sur les appels à ce nouvel endpoint.
+WorkspaceIdentityLock est partagé par l'ingestion, Create/Update/Delete OpportunitySource,
+Create/Update/Delete physique Opportunity et Update/Delete Company. Il exige une transaction
+active et conserve exactement la clé V1. Le verrou d'identité est acquis avant les
+verrous Pipeline, puis les données sont relues. Company.Create reste hors verrou :
+une Company non liée n'est pas candidate ; son rattachement passe par Opportunity.Update.
+Archive/Restore Opportunity reste hors de ce verrou, car les archives sont candidates.
+Le SQL externe ne coopère pas forcément : les nouvelles contraintes et unicités
+PostgreSQL restent la protection des références et clés persistées. L'ingestion
+convertit les violations 23505 de ses deux index en 409 ConcurrentIdentityChange, sans retry.
 
 ## SourceExecution et atomicité
 
@@ -287,7 +295,7 @@ RoleCode (50, external-id ou source-url). Une même provenance portant les deux
 identités produit deux liens de rôles distincts, sans doublon exact.
 La FK parent est composée avec WorkspaceId. Aucun lien n'est requis pour ignored
 ou un rapprochement par titre/société seul ; le marqueur OpportunitySource sans
-identité reste inchangé dans cette tranche.
+identité est conservé pour le legacy uniquement ; aucune nouvelle ligne vide n’est créée.
 
 Les FK vivantes vers Opportunity et OpportunitySource utilisent SET NULL : une
 suppression physique conserve les IDs snapshot. Les suppressions administratives
@@ -297,8 +305,7 @@ ne sont pas encore composées avec WorkspaceId.
 
 L'index (WorkspaceId, NormalizedTitle, NormalizedCompanyName), filtré sur une
 société et un OpportunityIdSnapshot présents et une issue created/updated/ignored,
-est **non unique**. Il prépare la consultation historique, sans participer à la
-déduplication actuelle. Les index chronologiques, par issue et par provenance
+est **non unique**. Il sert au fallback historique durable depuis la Phase 6.2.2. Les index chronologiques, par issue et par provenance
 complètent ces accès.
 
 Les décisions sont centralisées dans `IngestionHistoryCodes` :
@@ -348,6 +355,91 @@ Le POST et le GET SourceExecution exposent les mêmes versions, destinations et
 compteurs. **ContextSnapshotJson et les observations détaillées ne sont pas exposés
 publiquement** ; leurs endpoints de lecture appartiennent à la Phase 6.2.4.
 
+## Identités persistantes — Phase 6.2.2
+
+La migration `20261006101923_Phase622PersistentSourceIdentities` ajoute à OpportunitySource
+`WorkspaceId` obligatoire et `NormalizedSourceUrl` nullable, limitée à 2048 caractères.
+Le CRUD conserve SourceUrl brute ; l'ingestion conserve sa valeur métier V1 déjà
+normalisée. Dans les deux flux, NormalizedSourceUrl est la clé V1. NormalizationVersion
+reste à 1 ; aucune règle de comparaison URL ou texte n'a changé.
+
+Les clés alternatives (WorkspaceId, Id) existent sur Opportunity, SourceConfiguration,
+SavedSearch, SourceExecution et OpportunitySource. Les FK d'OpportunitySource vers
+Opportunity, SourceConfiguration, SavedSearch et SourceExecution incluent WorkspaceId.
+La première conserve CASCADE, les autres RESTRICT ; Workspace possède sa propre FK RESTRICT.
+Les références facultatives restent facultatives. Les liens vivants d'historique
+conservent leurs FK simples SET NULL.
+
+Les nouvelles unicités partielles sont :
+
+- `UX_OpportunitySources_Workspace_NormalizedSourceUrl` sur
+  (WorkspaceId, NormalizedSourceUrl), si la clé URL n'est pas null ;
+- `UX_OpportunitySources_Workspace_SourceConfiguration_ExternalId` sur
+  (WorkspaceId, SourceConfigurationId, ExternalId), si les deux identifiants sont présents.
+
+Un ExternalId exige une SourceConfiguration. SourceUrl et NormalizedSourceUrl doivent
+être présents ou absents ensemble. Les anciens index uniques sont remplacés ;
+l'index non unique SourceUrl reste disponible. ExternalId reste opaque et sensible à la casse.
+La même URL peut exister dans deux workspaces ; le même ExternalId dans deux configurations.
+
+Le backfill ajoute d'abord les colonnes nullables et remplit WorkspaceId depuis
+Opportunity. Il vérifie ensuite les références, calcule les clés URL et vérifie les
+collisions URL/ExternalId avant d'imposer NOT NULL et les nouvelles contraintes.
+La fonction SQL temporaire est figée avec cette migration, y compris la casse Unicode
+invariante .NET, et testée contre UrlKey. Elle n'est pas utilisée par les services.
+SourceUrl brute n'est jamais réécrite. Une anomalie fait échouer toute la migration
+dans sa transaction : diagnostics Phase622 contrôlés, avec compte et IDs, sans URL
+ni ExternalId en clair. Aucun rattachement, fusion ou nettoyage automatique n'est effectué.
+Les données doivent être corrigées explicitement avant de réessayer.
+
+Les provenances legacy null/null sont conservées telles quelles. Les services refusent
+les nouvelles provenances vides ; la base ne pose pas un check global qui invaliderait
+ces lignes historiques. Down restaure les FK/index précédents et retire les deux nouvelles
+colonnes (leurs valeurs sont perdues), sans supprimer les lignes ni modifier les anciennes
+colonnes. La réapplication reconstruit les clés sur un jeu compatible.
+
+Le fallback réunit trois ensembles d'OpportunityId distincts : Company actuellement
+liée, SourceExecutionItem historique, registre du lot. Le registre utilise
+(NormalizedTitle, NormalizedCompanyName) vers un ensemble d'IDs et est enrichi après
+chaque décision réussie. L'historique exige le même workspace, les deux clés identiques,
+une issue created/updated/ignored et un OpportunityId vivant dans le workspace.
+Un ID snapshot sans référence vivante n'est jamais candidat. Un renommage ultérieur
+n'efface pas l'identité historique ; une suppression physique exclut l'opportunité.
+Les trois ensembles et les identités ExternalId/URL sont examinés ensemble :
+plusieurs opportunités distinctes donnent AmbiguousIdentity, sans priorité masquant
+une contradiction. L'index titre/société reste non unique.
+
+Le CRUD conserve `/api/opportunities/{opportunityId}/sources` :
+
+| Opération | Comportement |
+| --- | --- |
+| POST | 201 ; WorkspaceId serveur, références résolues, URL validée et normalisée, collisions vérifiées |
+| PUT non utilisé | 204 après validations ; WorkspaceId et OpportunityId ne changent jamais |
+| PUT utilisé identique | 204 sans écriture |
+| PUT utilisé modifié | 409 ImmutableSourceIdentity |
+| DELETE non utilisé | 204, suppression physique |
+| DELETE utilisé | 409 SourceIdentityInUse |
+
+Une provenance est utilisée si SourceExecutionId est renseigné **ou** si une
+SourceExecutionItemSource la référence. La protection porte sur configuration,
+recherche, exécution, libellé, URL, ExternalId et LastSeenAt. L'ingestion peut toujours
+observer LastSeenAt dans sa transaction ; cette opération n'est pas un PUT utilisateur.
+
+Les résultats de service sont typés : Succeeded, NotFound, InvalidInput et Conflict.
+ProblemDetails expose code et detail contrôlé : InvalidSourceUrl/MissingSourceIdentity/
+InvalidReference/InvalidInput/InvalidTimestamps en 400, ressource absente en 404,
+DuplicateExternalId/DuplicateSourceUrl/ImmutableSourceIdentity/SourceIdentityInUse/
+ConcurrentIdentityChange en 409. Les violations 23505 des deux index connus sont
+mappées précisément ; aucun texte d'exception n'est analysé et aucun détail SQL n'est exposé.
+
+PostgreSQL garantit les relations de workspace, les paires URL/clé, le contexte
+ExternalId et les unicités des clés stockées. Les services garantissent la normalisation,
+l'absence de nouvelles provenances vides, la protection des identités observées et la
+sérialisation des écritures coopératives. Un SQL externe peut encore fournir une
+**fausse clé normalisée**, modifier l'historique ou contourner les règles de service :
+aucun trigger de normalisation ou dispositif contre un administrateur n'est ajouté.
+Le fallback titre/société n'est pas une unicité SQL et ne déclenche aucune fusion.
+
 ## Vérification et limites
 
 `IngestionTests` teste les routes HTTP sur PostgreSQL 18 jetable : mappage, rejeu,
@@ -359,18 +451,23 @@ le snapshot et son hash, les contraintes SQL, la suppression physique, les éche
 l'annulation avec gate, la reconstruction et l'upgrade réel depuis la migration
 Phase42PipelineLifecycleAndDefault (insertion SQL dans l'ancien schéma).
 
+`PersistentSourceIdentityMigrationTests` couvre le backfill depuis 6.2.1, les refus
+atomiques, la parité SQL/.NET et Down/Up. `PersistentSourceIdentityTests` couvre
+les identités persistées, les fallbacks et les contraintes PostgreSQL directes.
+`OpportunitySourceTests` vérifie le CRUD HTTP et les collisions avec un écrivain SQL.
+`PersistentSourceIdentityConcurrencyTests` utilise des gates et pg_stat_activity
+pour vérifier la coopération des écritures Opportunity/Company/provenance.
+
 Le premier parcours privilégie une décision déterministe sur des lots bornés. Il
-charge les opportunités/provenances du workspace en mémoire ; les index normalisés
-et l'optimisation pour des volumes importants restent à étudier. Les noms de société
-libres sont désormais conservés dans le journal, mais ne constituent pas encore
-un fallback durable utilisé pour dédupliquer.
-Restent à 6.2.2 : identité URL persistante sur OpportunitySource, index normalisé
-et unicité URL par workspace, durcissement des CRUD OpportunitySource, fallback
-durable titre/société et verrou partagé avec les CRUD. Aucun Worker, queue, planification, réseau, n8n, retry
+charge les opportunités/provenances du workspace en mémoire ; les clés URL sont
+persistées et indexées, mais les recherches SQL ciblées et l'optimisation pour des
+volumes importants restent à étudier. Les noms de société
+libres conservés dans le journal participent au fallback durable depuis 6.2.2.
+Les endpoints publics d'historique restent à réaliser en 6.2.4. Aucun Worker, queue, planification, réseau, n8n, retry
 automatique, scoring, IA, email ou automatisation métier n'est ajouté.
 
 ```powershell
-dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~Phase4ReconstructionTests"
+dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~PersistentSourceIdentity|FullyQualifiedName~OpportunitySource|FullyQualifiedName~Phase4ReconstructionTests"
 dotnet build ProspectionCrm.slnx --configuration Release
 dotnet test ProspectionCrm.slnx --configuration Release
 ```

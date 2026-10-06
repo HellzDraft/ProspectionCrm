@@ -3,6 +3,9 @@ namespace ProspectionCrm.Api.Entities;
 public class OpportunitySource
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid WorkspaceId { get; set; }
+    public string? NormalizedSourceUrl { get; set; }
+    public Workspace Workspace { get; set; } = null!;
     public Guid OpportunityId { get; set; }
     public Guid? SourceConfigurationId { get; set; }
     public Guid? SavedSearchId { get; set; }

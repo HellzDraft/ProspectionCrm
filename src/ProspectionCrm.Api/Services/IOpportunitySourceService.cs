@@ -6,9 +6,18 @@ public interface IOpportunitySourceService
 {
     Task<IReadOnlyList<OpportunitySourceDto>?> GetAllAsync(Guid opportunityId, CancellationToken cancellationToken);
     Task<OpportunitySourceDto?> GetByIdAsync(Guid opportunityId, Guid id, CancellationToken cancellationToken);
-    Task<(bool Found, OpportunitySourceDto? Source, string? Error)> CreateAsync(Guid opportunityId,
+    Task<OpportunitySourceWriteResult> CreateAsync(Guid opportunityId,
         CreateOpportunitySourceRequest request, CancellationToken cancellationToken);
-    Task<(bool Found, string? Error)> UpdateAsync(Guid opportunityId, Guid id,
+    Task<OpportunitySourceWriteResult> UpdateAsync(Guid opportunityId, Guid id,
         UpdateOpportunitySourceRequest request, CancellationToken cancellationToken);
-    Task<bool> DeleteAsync(Guid opportunityId, Guid id, CancellationToken cancellationToken);
+    Task<OpportunitySourceWriteResult> DeleteAsync(Guid opportunityId, Guid id, CancellationToken cancellationToken);
 }
+
+public enum OpportunitySourceWriteStatus { Succeeded, NotFound, InvalidInput, Conflict }
+public enum OpportunitySourceErrorCode
+{
+    InvalidSourceUrl, MissingSourceIdentity, InvalidReference, InvalidInput, InvalidTimestamps,
+    DuplicateExternalId, DuplicateSourceUrl, ImmutableSourceIdentity, SourceIdentityInUse, ConcurrentIdentityChange
+}
+public sealed record OpportunitySourceWriteResult(OpportunitySourceWriteStatus Status,
+    OpportunitySourceDto? Source = null, OpportunitySourceErrorCode? Code = null, string? Detail = null);

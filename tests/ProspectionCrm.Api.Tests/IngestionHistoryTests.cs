@@ -50,7 +50,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         return new(workspace.Id, search.Id, source.Id, pipeline.Id, stage.Id);
     }
     private static IngestionItemRequest Item(string? external = "one", string? url = "https://example.invalid/Job",
-        string title = " Engineer ", string? company = " Studio ") => new()
+        string title = " Engineer ", string? company = null) => new()
     {
         Title = title, CompanyName = company, ExternalId = external, SourceUrl = url,
         Location = " Bordeaux ", Description = " Description "
@@ -152,7 +152,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         Assert.Equal((Outcomes.Ignored, DuplicateInBatch), (items[1].OutcomeCode, items[1].DecisionCode));
         Assert.Equal(0, JsonNode.Parse(items[1].DecisionDetailsJson!)!["duplicateOfItemIndex"]!.GetValue<int>());
         Assert.All(items, x => { Assert.Equal(opportunity.Id, x.OpportunityIdSnapshot); Assert.Empty(x.Sources); });
-        Assert.Single(await db.OpportunitySources.ToArrayAsync()); // Phase 6.1 null-identity marker stays.
+        Assert.Empty(await db.OpportunitySources.ToArrayAsync()); // Fallback is carried by history, not an empty provenance.
     }
 
     [Fact]
@@ -432,7 +432,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
             """UPDATE "SourceExecutionItems" SET "ProcessedAt" = NULL""",
             """UPDATE "SourceExecutionItems" SET "ProcessedAt" = "ReceivedAt" - interval '1 second'""",
             """UPDATE "SourceExecutionItems" SET "OutcomeCode" = 'pending'""",
-            """UPDATE "SourceExecutionItems" SET "NormalizedCompanyName" = NULL""",
+            """UPDATE "SourceExecutionItems" SET "CompanyName" = 'unpaired'""",
             """UPDATE "SourceExecutionItems" SET "NormalizedSourceUrl" = NULL""",
             """UPDATE "SourceExecutionItems" SET "OpportunityIdSnapshot" = NULL""",
             """UPDATE "SourceExecutionItems" SET "OpportunityIdSnapshot" = '00000000-0000-0000-0000-000000000001'""",
@@ -473,7 +473,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         await db.Database.MigrateAsync();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.False(db.Database.HasPendingModelChanges());
-        Assert.EndsWith("_Phase621IngestionHistoryFoundation", (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.EndsWith("_Phase622PersistentSourceIdentities", (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Empty(await db.SourceExecutionItems.ToArrayAsync());
         Assert.Empty(await db.SourceExecutionItemSources.ToArrayAsync());
     }

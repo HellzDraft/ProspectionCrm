@@ -89,8 +89,9 @@ et conserve ses données dans le volume Compose `postgres_data`.
 
 Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20260925101154_InitialCrmSchema`,
-`20260929150147_Phase42PipelineLifecycleAndDefault`, puis
-`20261006091016_Phase621IngestionHistoryFoundation` :
+`20260929150147_Phase42PipelineLifecycleAndDefault`,
+`20261006091016_Phase621IngestionHistoryFoundation`, puis
+`20261006101923_Phase622PersistentSourceIdentities` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -261,7 +262,7 @@ API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désorm
 son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
-### 9. Ingestion manuelle et historique — Phases 6.1 et 6.2.1
+### 9. Ingestion manuelle et historique — Phases 6.1 à 6.2.2
 
 `POST /api/saved-searches/{savedSearchId}/ingestions` reçoit une étape cible explicite
 et un lot de 1 à 100 résultats fournis par le client. Il déduplique dans le workspace
@@ -278,9 +279,15 @@ legacy sans historique détaillé (`HistoryAvailable = false`).
 Les compteurs rejected, rolled-back, not-processed et cancelled distinguent l'élément
 fautif, les décisions annulées, les entrées non traitées et l'annulation en cours.
 Le détail est conservé en base ; aucun endpoint public de lecture détaillée n'est
-encore ajouté. L'identité URL persistante, l'index normalisé de provenance,
-le durcissement OpportunitySource, le fallback durable titre/société et le verrou
-partagé avec les CRUD restent prévus pour 6.2.2.
+encore ajouté. La Phase 6.2.2 persiste maintenant WorkspaceId et NormalizedSourceUrl
+sur OpportunitySource, impose les FK du même workspace et les unicités URL par workspace
+et ExternalId par configuration. Elle ajoute le fallback historique et dans le lot,
+ainsi que le verrou partagé avec les CRUD OpportunitySource, Opportunity et Company.
+Les provenances observées deviennent immuables par le CRUD (409 sur modification
+ou suppression), et aucune nouvelle provenance vide n'est acceptée.
+La migration Phase622PersistentSourceIdentities préserve le legacy null/null mais
+refuse toute incohérence, URL invalide ou collision à résoudre avant l'upgrade.
+Les écritures SQL externes restent responsables de fournir la véritable clé normalisée.
 
 Le contrat, la normalisation conservative, les compteurs et les limites de provenance
 sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).

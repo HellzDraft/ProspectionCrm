@@ -26,25 +26,34 @@ public class OpportunitySourcesController(IOpportunitySourceService service) : C
     public async Task<ActionResult<OpportunitySourceDto>> Create(Guid opportunityId,
         CreateOpportunitySourceRequest request, CancellationToken cancellationToken)
     {
-        var (found, source, error) = await service.CreateAsync(opportunityId, request, cancellationToken);
-        if (!found)
-            return NotFound();
-        if (error is not null)
-            return Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
-        return CreatedAtAction(nameof(GetById), new { opportunityId, id = source!.Id }, source);
+        var result = await service.CreateAsync(opportunityId, request, cancellationToken);
+        return result.Status == OpportunitySourceWriteStatus.Succeeded
+            ? CreatedAtAction(nameof(GetById), new { opportunityId, id = result.Source!.Id }, result.Source)
+            : Failure(result);
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid opportunityId, Guid id,
         UpdateOpportunitySourceRequest request, CancellationToken cancellationToken)
     {
-        var (found, error) = await service.UpdateAsync(opportunityId, id, request, cancellationToken);
-        if (!found)
-            return NotFound();
-        return error is null ? NoContent() : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+        var result = await service.UpdateAsync(opportunityId, id, request, cancellationToken);
+        return result.Status == OpportunitySourceWriteStatus.Succeeded ? NoContent() : Failure(result);
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid opportunityId, Guid id, CancellationToken cancellationToken)
-        => await service.DeleteAsync(opportunityId, id, cancellationToken) ? NoContent() : NotFound();
+    {
+        var result = await service.DeleteAsync(opportunityId, id, cancellationToken);
+        return result.Status == OpportunitySourceWriteStatus.Succeeded ? NoContent() : Failure(result);
+    }
+
+    private ObjectResult Failure(OpportunitySourceWriteResult result) => Problem(
+        statusCode: result.Status switch
+        {
+            OpportunitySourceWriteStatus.NotFound => 404,
+            OpportunitySourceWriteStatus.InvalidInput => 400,
+            _ => 409
+        },
+        detail: result.Detail,
+        extensions: new Dictionary<string, object?> { ["code"] = result.Code?.ToString() });
 }

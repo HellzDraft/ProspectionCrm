@@ -276,7 +276,7 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Equal("  Crew\t Rats ", (await db.Companies.SingleAsync()).Name);
         var replay = await IngestAsync(Item(null, null, "Unity Engineer", "Crew Rats"));
         Assert.Equal(id, replay.Items[0].OpportunityId);
-        Assert.Equal(1, await db.OpportunitySources.CountAsync());
+        Assert.Equal(0, await db.OpportunitySources.CountAsync());
     }
 
     [Fact]
@@ -399,7 +399,7 @@ public sealed class IngestionTests : IAsyncLifetime
         await using var db = Db();
         var foreign = await SeedAsync(db, archived: true);
         var opportunity = new Opportunity { WorkspaceId = foreign.WorkspaceId, PipelineStageId = foreign.StageId, Title = "Engineer", PriorityCode = "normal" };
-        db.OpportunitySources.Add(new OpportunitySource { Opportunity = opportunity, SourceConfigurationId = foreign.SourceId, SourceLabel = "Foreign", ExternalId = "item-1", SourceUrl = "https://example.invalid/jobs/1" });
+        db.OpportunitySources.Add(new OpportunitySource { WorkspaceId = foreign.WorkspaceId, NormalizedSourceUrl = "https://example.invalid/jobs/1", Opportunity = opportunity, SourceConfigurationId = foreign.SourceId, SourceLabel = "Foreign", ExternalId = "item-1", SourceUrl = "https://example.invalid/jobs/1" });
         await db.SaveChangesAsync();
         var result = await IngestAsync(Item());
         Assert.NotEqual(opportunity.Id, result.Items[0].OpportunityId);

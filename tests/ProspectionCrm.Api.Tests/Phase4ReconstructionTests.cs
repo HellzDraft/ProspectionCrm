@@ -162,7 +162,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OpportunitySelectionsShareTheLockAndDoNotBlockOtherPipelines()
+    public async Task OpportunitySelectionsSerializeIdentitiesButKeepSharedPipelineProtection()
     {
         await using var setup = CreateContext();
         await setup.Database.MigrateAsync();
@@ -182,12 +182,26 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         var first = new OpportunityService(writer, new CurrentWorkspaceProvider(writer)).CreateAsync(
             new() { Title = "Paused", PipelineStageId = stages[0].Id, PriorityCode = "normal" }, token);
         await gate.Reached.Task.WaitAsync(token);
+        await using var contender = CreateContext();
+        var selected = new OpportunityService(contender, new CurrentWorkspaceProvider(contender)).CreateAsync(
+            new() { Title = "Concurrent", PipelineStageId = stages[0].Id, PriorityCode = "normal" }, token);
         try
         {
             await using var other = CreateContext();
-            var selected = await new OpportunityService(other, new CurrentWorkspaceProvider(other)).CreateAsync(
-                new() { Title = "Concurrent", PipelineStageId = stages[0].Id, PriorityCode = "normal" }, token);
-            Assert.Null(selected.Error);
+            await using var observer = new NpgsqlConnection(postgres.GetConnectionString());
+            await observer.OpenAsync(token);
+            await using var waiting = new NpgsqlCommand(
+                "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_xact_lock%'", observer);
+            while (Convert.ToInt64(await waiting.ExecuteScalarAsync(token)) == 0)
+            {
+                Assert.False(selected.IsCompleted);
+                await Task.Delay(25, token);
+            }
+            // Pipeline protection remains SHARE; only identity writers serialize per workspace.
+            await using var share = await other.Database.BeginTransactionAsync(token);
+            await other.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Pipelines\" WHERE \"Id\" = {stages[0].PipelineId} FOR SHARE NOWAIT", token);
+            await share.CommitAsync(token);
             var written = await new PipelineStageService(other, new CurrentWorkspaceProvider(other)).CreateAsync(
                 stages[1].PipelineId, new() { Name = "Independent", CategoryCode = "active" }, token);
             Assert.Equal(PipelineStageWriteStatus.Succeeded, written.Status);
@@ -195,6 +209,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         }
         finally { gate.Release.TrySetResult(); }
         Assert.Null((await first).Error);
+        Assert.Null((await selected).Error);
     }
 
     private sealed class BeforeSaveGate : SaveChangesInterceptor

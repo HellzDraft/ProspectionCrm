@@ -30,6 +30,7 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
         var error = await ValidateReferencesAsync(workspaceId, request.CompanyId, request.ContactId,
             request.PipelineStageId, requireActiveStage: true, request.PriorityCode, cancellationToken);
         if (error is not null)
@@ -59,10 +60,13 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
         var opportunity = await dbContext.Opportunities
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (opportunity is null)
             return (false, null);
+        await dbContext.Entry(opportunity).ReloadAsync(cancellationToken);
+        if (dbContext.Entry(opportunity).State == EntityState.Detached) return (false, null);
 
         var error = await ValidateReferencesAsync(workspaceId, request.CompanyId, request.ContactId,
             request.PipelineStageId, requireActiveStage: request.PipelineStageId != opportunity.PipelineStageId,
@@ -106,12 +110,17 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
         var opportunity = await dbContext.Opportunities
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (opportunity is null)
             return false;
+        await dbContext.Entry(opportunity).ReloadAsync(cancellationToken);
+        if (dbContext.Entry(opportunity).State == EntityState.Detached) return false;
         dbContext.Opportunities.Remove(opportunity);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -128,8 +137,8 @@ public class OpportunityService(ProspectionCrmDbContext dbContext, ICurrentWorks
             return "ContactId does not reference a contact in the current workspace.";
         if (requireActiveStage && pipelineStageId.HasValue)
         {
-            // Keep a new selection valid through SaveChanges/commit. SHARE permits concurrent
-            // opportunity selections, but conflicts with parent archive UPDATE and stage writers'
+            // Keep a new selection valid through SaveChanges/commit. SHARE permits other
+            // pipeline readers, but conflicts with parent archive UPDATE and stage writers'
             // FOR UPDATE. Re-read the stage's active state below after any lock wait.
             await dbContext.Pipelines.FromSqlInterpolated($"""
                 SELECT p.* FROM "Pipelines" p

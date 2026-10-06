@@ -20,6 +20,7 @@ public class Workspace
     public ICollection<SourceConfiguration> SourceConfigurations { get; set; } = new List<SourceConfiguration>();
     public ICollection<SavedSearch> SavedSearches { get; set; } = new List<SavedSearch>();
     public ICollection<SourceExecution> SourceExecutions { get; set; } = new List<SourceExecution>();
+    public ICollection<OpportunitySource> OpportunitySources { get; set; } = [];
     public ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
     public ICollection<EmailMessage> EmailMessages { get; set; } = new List<EmailMessage>();
     public ICollection<CalendarEvent> CalendarEvents { get; set; } = new List<CalendarEvent>();

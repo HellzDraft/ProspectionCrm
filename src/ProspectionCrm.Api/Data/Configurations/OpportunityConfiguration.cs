@@ -9,6 +9,7 @@ public class OpportunityConfiguration : IEntityTypeConfiguration<Opportunity>
     public void Configure(EntityTypeBuilder<Opportunity> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
         builder.Property(x => x.Title).IsRequired().HasMaxLength(200);
         builder.Property(x => x.PriorityCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.Location).HasMaxLength(200);

@@ -3,6 +3,8 @@ namespace ProspectionCrm.Api.Dtos.OpportunitySources;
 public class OpportunitySourceDto
 {
     public Guid Id { get; set; }
+    public Guid WorkspaceId { get; set; }
+    public string? NormalizedSourceUrl { get; set; }
     public Guid OpportunityId { get; set; }
     public Guid? SourceConfigurationId { get; set; }
     public Guid? SavedSearchId { get; set; }

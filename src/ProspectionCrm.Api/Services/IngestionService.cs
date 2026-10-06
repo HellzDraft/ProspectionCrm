@@ -1,8 +1,5 @@
-using System.Buffers.Binary;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -32,11 +29,9 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
-        // Only ingestions of the SAME workspace serialize. No global or table lock, and no
+        // Identity writers of the SAME workspace serialize. No global or table lock, and no
         // workspace NO KEY UPDATE lock that would unnecessarily block Phase 4 default/archive.
-        var lockKey = BinaryPrimitives.ReadInt64BigEndian(SHA256.HashData(
-            Encoding.UTF8.GetBytes($"ProspectionCrm/manual-ingestion/{workspaceId:D}")));
-        await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+        await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
 
         // Consistent order: ingestion advisory lock, workspace, search, configuration, pipeline.
         // KEY SHARE protects ownership/FKs; SHARE freezes selected configuration and destination.
@@ -88,12 +83,13 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         var currentIndex = 0;
         try
         {
-            // Small V1 batches, normalized in .NET with identical rules for stored and incoming
-            // values. Include archives. SQL normalized indexes are deliberately not introduced.
+            // Include archives. Source identities use persisted keys; current business text
+            // uses the unchanged V1 comparison and history uses its normalized index.
             var opportunities = await dbContext.Opportunities.AsNoTracking().Include(x => x.Company)
                 .Where(x => x.WorkspaceId == workspaceId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var sources = await dbContext.OpportunitySources
-                .Where(x => x.Opportunity.WorkspaceId == workspaceId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+                .Where(x => x.WorkspaceId == workspaceId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+            var batchMatches = new Dictionary<(string Title, string Company), HashSet<Guid>>();
             var seen = new Dictionary<(string?, string?, string, string?), int>();
             var outcomes = new List<IngestionItemDto>();
             for (var index = 0; index < request.Items.Count; index++)
@@ -108,13 +104,20 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                     .Where(x => x.SourceConfigurationId == configuration.Id && x.ExternalId == item.ExternalId)
                     .Select(x => x.OpportunityId).Distinct().ToArray();
                 var urlMatches = url is null ? [] : sources
-                    .Where(x => IngestionNormalization.UrlKey(x.SourceUrl) == url)
+                    .Where(x => x.NormalizedSourceUrl == url)
                     .Select(x => x.OpportunityId).Distinct().ToArray();
-                var textMatches = company is null ? [] : opportunities
+                var currentTextMatches = company is null ? [] : opportunities
                     .Where(x => x.Company?.WorkspaceId == workspaceId
                         && IngestionNormalization.TextKey(x.Title) == title
                         && IngestionNormalization.TextKey(x.Company.Name) == company)
                     .Select(x => x.Id).Distinct().ToArray();
+                var historicalMatches = company is null ? [] : await dbContext.SourceExecutionItems.AsNoTracking()
+                    .Where(x => x.WorkspaceId == workspaceId && x.NormalizedTitle == title && x.NormalizedCompanyName == company
+                        && x.OpportunityId != null && x.Opportunity!.WorkspaceId == workspaceId
+                        && (x.OutcomeCode == Outcomes.Created || x.OutcomeCode == Outcomes.Updated || x.OutcomeCode == Outcomes.Ignored))
+                    .Select(x => x.OpportunityId!.Value).Distinct().ToArrayAsync(cancellationToken);
+                var inBatch = company is not null && batchMatches.TryGetValue((title, company), out var ids) ? ids : [];
+                var textMatches = currentTextMatches.Concat(historicalMatches).Concat(inBatch).Distinct().ToArray();
                 // Precedence never hides a contradictory weaker identity or an ambiguous key.
                 var candidates = externalMatches.Concat(urlMatches).Concat(textMatches).Distinct().ToArray();
                 if (candidates.Length > 1)
@@ -151,6 +154,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                     // No provenance observation or links for an internal duplicate.
                     await dbContext.SaveChangesAsync(cancellationToken);
                     provisional.Add(index, new(Outcomes.Ignored, opportunityId, firstIndex));
+                    Remember(title, company, opportunityId.Value);
                     outcomes.Add(new(index, opportunityId.Value, Outcomes.Ignored));
                     currentIndex = index + 1;
                     continue;
@@ -178,8 +182,16 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                 // One opportunity and its provenance are always saved together, in our transaction.
                 await dbContext.SaveChangesAsync(cancellationToken);
                 provisional.Add(index, new(observation.OutcomeCode, opportunityId, null));
+                Remember(title, company, opportunityId.Value);
                 outcomes.Add(new(index, opportunityId.Value, observation.OutcomeCode));
                 currentIndex = index + 1;
+            }
+            void Remember(string title, string? company, Guid id)
+            {
+                if (company is null) return;
+                if (!batchMatches.TryGetValue((title, company), out var ids))
+                    batchMatches[(title, company)] = ids = [];
+                ids.Add(id);
             }
             execution.StatusCode = "succeeded";
             execution.FinishedAt = Later(DateTimeOffset.UtcNow, execution.StartedAt);
@@ -206,7 +218,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
         {
             SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "UX_OpportunitySources_SourceConfiguration_ExternalId" or "UX_OpportunitySources_Opportunity_SourceUrl"
+            ConstraintName: "UX_OpportunitySources_Workspace_SourceConfiguration_ExternalId" or "UX_OpportunitySources_Workspace_NormalizedSourceUrl"
         })
         {
             await FinishFailedAsync(transaction, execution, "failed", ConcurrentIdentityChange, currentIndex, provisional);
@@ -225,11 +237,13 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
     private IReadOnlyList<(OpportunitySource Source, string Role)> Observe(List<OpportunitySource> sources, Guid opportunityId, SourceConfiguration configuration,
         Guid searchId, SourceExecution execution, string? externalId, string? url)
     {
+        if (externalId is null && url is null) return [];
         OpportunitySource Add(string? external, string? sourceUrl)
         {
             var source = new OpportunitySource
             {
-                OpportunityId = opportunityId, SourceConfigurationId = configuration.Id, SavedSearchId = searchId,
+                WorkspaceId = execution.WorkspaceId, OpportunityId = opportunityId, SourceConfigurationId = configuration.Id, SavedSearchId = searchId,
+                NormalizedSourceUrl = sourceUrl,
                 SourceExecutionId = execution.Id, SourceLabel = configuration.Name, ExternalId = external, SourceUrl = sourceUrl,
                 FirstSeenAt = execution.StartedAt, LastSeenAt = execution.StartedAt
             };
@@ -240,7 +254,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         var externalSource = externalId is null ? null : sources.SingleOrDefault(x =>
             x.SourceConfigurationId == configuration.Id && x.ExternalId == externalId);
         var urlSources = url is null ? [] : sources.Where(x => x.OpportunityId == opportunityId
-            && IngestionNormalization.UrlKey(x.SourceUrl) == url).ToArray();
+            && x.NormalizedSourceUrl == url).ToArray();
         if (externalId is not null && externalSource is null)
         {
             // A URL already attached by another source cannot be duplicated under the current
@@ -249,10 +263,6 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         }
         if (url is not null && urlSources.Length == 0 && externalSource?.SourceUrl != url)
             urlSources = [Add(null, url)];
-        if (externalId is null && url is null)
-            externalSource = sources.FirstOrDefault(x => x.OpportunityId == opportunityId
-                && x.SourceConfigurationId == configuration.Id && x.ExternalId is null && x.SourceUrl is null)
-                ?? Add(null, null);
         foreach (var source in urlSources.Concat(externalSource is null ? [] : new[] { externalSource }).Distinct())
             source.LastSeenAt = Later(execution.StartedAt, Later(source.FirstSeenAt, source.LastSeenAt ?? source.FirstSeenAt));
         // Never replace existing provenance identifiers, URLs, origin search/execution or label.
@@ -261,7 +271,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         if (url is not null)
         {
             foreach (var source in sources.Where(x => x.OpportunityId == opportunityId
-                && IngestionNormalization.UrlKey(x.SourceUrl) == url))
+                && x.NormalizedSourceUrl == url))
                 used.Add((source, Identities.SourceUrl));
         }
         return used;
