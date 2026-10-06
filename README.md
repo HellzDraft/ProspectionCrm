@@ -260,6 +260,18 @@ API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désorm
 son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
+### 9. Ingestion manuelle de résultats — Phase 6.1
+
+`POST /api/saved-searches/{savedSearchId}/ingestions` reçoit une étape cible explicite
+et un lot de 1 à 100 résultats fournis par le client. Il déduplique dans le workspace
+entier, archives comprises, et enregistre Opportunity, provenance et SourceExecution
+sans modifier les données utilisateur des opportunités retrouvées. Une erreur annule
+les écritures métier du lot tout en conservant l'exécution échouée lorsque la base
+reste disponible. Aucun accès réseau, Company automatique ou migration n'est ajouté.
+
+Le contrat, la normalisation conservative, les compteurs et les limites de provenance
+sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).
+
 ## Docker et n8n facultatif
 
 ```powershell
