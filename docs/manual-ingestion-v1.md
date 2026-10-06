@@ -1,4 +1,4 @@
-# Ingestion manuelle de résultats — Phases 6.1 à 6.2.4
+# Ingestion manuelle de résultats — Phases 6.1 à 6.2.6
 
 Cette route reçoit des résultats déjà fournis par le client. Elle n'exécute aucune
 recherche réseau, collecte planifiée ou automatisation. La configuration et la
@@ -522,6 +522,27 @@ ou DELETE d'observation ni correction de snapshot n'est exposé.
 y compris les erreurs, les suppressions, les deux rôles, les filtres, la pagination,
 le nombre borné de requêtes SQL et un snapshot de toutes les tables avant/après GET.
 
+## Phase 6.2.6 — Validation finale
+
+`Phase6ReconstructionTests` vérifie toute la chaîne par HTTP sur un PostgreSQL 18
+Testcontainers neuf : absence de tables/migrations préexistantes, migrations réelles,
+bootstrap idempotent, quatre pipelines et 28 étapes, source/recherche manuelles,
+ingestion, doublon interne, rejeu et fallback durable, préservation des modifications
+utilisateur et des archives, conflit avec rollback complet, lectures paginées et filtrées,
+puis suppression physique avec conservation des snapshots. Il contrôle également
+l'isolation Workspace et l'absence de mutation des tables par les GET.
+
+Aucun fichier EF ni contrat métier ne change. La dernière migration reste
+`20261006101923_Phase622PersistentSourceIdentities`, toutes les migrations sont
+appliquées et HasPendingModelChanges vaut false. Les tests spécialisés restent en place.
+Les périmètres initialement prévus pour 6.2.3 et 6.2.5 ont été absorbés par 6.2.2.
+
+GitHub Actions restaure, compile en Release et lance désormais **la suite complète**
+avec Docker/Testcontainers isolés, sans base de développement ni secrets. Les TRX
+sont conservés dans l'artifact `test-results`, y compris en cas d'échec des tests.
+Cette consolidation clôt la Phase 6.2 ; le premier adaptateur réel appartient à 6.3.
+Aucun adaptateur réseau, Worker ou collecte planifiée n'est implémenté ici.
+
 ## Vérification et limites
 
 `IngestionTests` teste les routes HTTP sur PostgreSQL 18 jetable : mappage, rejeu,
@@ -549,7 +570,7 @@ Les lectures publiques d'historique sont disponibles depuis 6.2.4. Aucun Worker,
 automatique, scoring, IA, email ou automatisation métier n'est ajouté.
 
 ```powershell
-dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~IngestionHistoryReadTests|FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~PersistentSourceIdentity|FullyQualifiedName~OpportunitySource|FullyQualifiedName~Phase4ReconstructionTests"
+dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~Phase6ReconstructionTests|FullyQualifiedName~IngestionHistoryReadTests|FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~PersistentSourceIdentity|FullyQualifiedName~OpportunitySource|FullyQualifiedName~Phase4ReconstructionTests"
 dotnet build ProspectionCrm.slnx --configuration Release
 dotnet test ProspectionCrm.slnx --configuration Release
 ```

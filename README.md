@@ -120,7 +120,7 @@ annulation et protection des chemins. Ils utilisent des dossiers temporaires net
 sans PostgreSQL, Docker, n8n ni accès au véritable `data/files`.
 Ils ne constituent pas une couverture complète du métier.
 
-Les tests métier de Phase 4 nécessitent **Docker démarré avec des conteneurs Linux**.
+Les tests métier des Phases 4, 5 et 6 nécessitent **Docker démarré avec des conteneurs Linux**.
 Testcontainers crée un PostgreSQL 18 jetable par test, sur un port hôte aléatoire,
 et y applique les migrations réelles. Le premier lancement peut télécharger
 `postgres:18` et l'image de nettoyage Testcontainers. Aucun conteneur, volume,
@@ -133,7 +133,34 @@ dotnet test ProspectionCrm.slnx --configuration Release --filter FullyQualifiedN
 ```
 
 Restore et build ne nécessitent pas de serveur PostgreSQL.
-La CI actuelle restaure et compile en Release ; elle n'exécute pas encore les tests.
+GitHub Actions (`.github/workflows/build.yml`) exécute désormais restore, build Release
+et **toute la suite de tests**, sur chaque push sur main et pull request vers main.
+Le runner Linux GitHub hébergé utilise son Docker local pour les PostgreSQL 18 isolés
+de Testcontainers. `docker info` doit réussir ; aucun test Docker n'est ignoré en cas
+d'indisponibilité. Aucune base de service partagée, base de développement, `.env` ou
+User Secret n'est requis. Le job dispose de `contents: read` et d'un timeout de 45 minutes.
+
+Le test `Phase6ReconstructionTests` repart d'un PostgreSQL totalement vierge, applique
+toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 étapes,
+source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
+Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
+et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
+les contrats métier. La migration finale reste `20261006101923_Phase622PersistentSourceIdentities`,
+sans migration en attente ni divergence du modèle EF.
+
+Commande locale équivalente à la CI (Docker doit être démarré) :
+
+```powershell
+docker info
+dotnet restore ProspectionCrm.slnx
+dotnet build ProspectionCrm.slnx --configuration Release --no-restore
+dotnet test ProspectionCrm.slnx --configuration Release --no-build --logger "trx;LogFileName=ProspectionCrm.Tests.trx" --results-directory TestResults
+```
+
+Les résultats TRX sont déposés dans `TestResults`. Dans GitHub Actions, l'artifact
+`test-results` est conservé 14 jours et déposé même si les tests échouent, dès lors
+que des fichiers ont été produits. Ouvrir le run puis télécharger cet artifact pour
+consulter le détail des résultats ; le succès du build seul ne valide plus la CI.
 
 ### 5. Démarrer API et frontend
 
