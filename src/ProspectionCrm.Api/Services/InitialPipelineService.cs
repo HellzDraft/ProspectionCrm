@@ -30,7 +30,11 @@ public sealed class InitialPipelineService(
         new("employment-game-dev", "Emploi Jeu Vidéo", "employment",
             "Pipeline de prospection pour les offres d'emploi jeu vidéo Unity / C#, principalement en France ou en remote Europe.",
             [("À analyser", "active"), ("À candidater", "active"), ("Candidature envoyée", "active"),
-             ("Entretien", "active"), ("Offre", "success"), ("Refusé", "failure"), ("Abandonné", "failure")])
+             ("Entretien", "active"), ("Offre", "success"), ("Refusé", "failure"), ("Abandonné", "failure")]),
+        new("business-game-dev", "Business Jeu Vidéo", "business",
+            "Pipeline de prospection business pour les studios, éditeurs, partenaires et structures d'accompagnement du jeu vidéo, notamment autour de CrewRats et des outils développés.",
+            [("Cible identifiée", "active"), ("À contacter", "active"), ("Contacté", "active"),
+             ("Échange en cours", "active"), ("Opportunité concrète", "active"), ("Accord / partenariat", "success"), ("Sans suite", "failure")])
     ];
 
     public async Task<InitialPipelineResult> InitializeAsync(CancellationToken cancellationToken)

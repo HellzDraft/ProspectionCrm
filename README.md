@@ -222,7 +222,7 @@ Il contrôle aussi l'absence de divergence modèle/snapshot EF. Pour le rejouer 
 dotnet test ProspectionCrm.slnx --configuration Release --filter FullyQualifiedName~Phase4ReconstructionTests
 ```
 
-### 8. Initialisation métier explicite — Phase 5.4, trois pipelines initiaux
+### 8. Initialisation métier explicite — Phase 5.5, catalogue initial complet
 
 Après le bootstrap, appeler séparément :
 
@@ -231,28 +231,33 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:5016/api/setup/initial-pip
 ```
 
 Cet endpoint sans corps initialise, dans cet ordre, « Emploi .NET »,
-« Freelance / Malt » et « Emploi Jeu Vidéo », chacun avec sept étapes (21 au total).
+« Freelance / Malt », « Emploi Jeu Vidéo » et « Business Jeu Vidéo », chacun avec sept étapes (28 au total).
 Lors de la toute première initialisation, Emploi .NET devient
 le défaut uniquement si aucun défaut n'existe. La réponse `InitialPipelinesDto`
-contient `pipelines` (les trois configurations courantes, archives comprises) et
+contient `pipelines` (les quatre configurations courantes, archives comprises) et
 `createdPipelineIds` (les IDs créés par cet appel). Le statut est 201 si au moins
 un pipeline a été créé, sinon 200 ; aucun `Location` vers un pipeline arbitraire.
 Ce DTO remplace le `PipelineDto` unique de Phase 5.2.
 
-Sur un workspace déjà initialisé en Phase 5.3, seul Emploi Jeu Vidéo est ajouté :
-les deux pipelines existants, leurs modifications/archives et le choix de défaut
+Sur un workspace déjà initialisé en Phase 5.4, seul Business Jeu Vidéo est ajouté :
+les trois pipelines existants, leurs modifications/archives et le choix de défaut
 restent inchangés, y compris un défaut retiré. Un upgrade direct depuis Phase 5.2
-ajoute Freelance / Malt et Emploi Jeu Vidéo sans toucher à Emploi .NET ni au défaut.
+ajoute Freelance / Malt, Emploi Jeu Vidéo et Business Jeu Vidéo sans toucher à Emploi .NET ni au défaut.
+Depuis Phase 5.3, seuls Emploi Jeu Vidéo et Business Jeu Vidéo sont créés.
 Les appels suivants ne réinitialisent aucune donnée utilisateur.
 Un homonyme non reconnu renvoie 409 sans mutation partielle ; le renommer explicitement
 permet l'initialisation, sans adoption automatique. L'appel est atomique pour les
-trois templates. Identités, conflits et transaction sont détaillés dans
+quatre templates. Identités, conflits et transaction sont détaillés dans
 [API Pipeline V1](docs/pipelines-v1.md).
+
+La clé permanente du quatrième template est `business-game-dev`. Pour le workspace
+`11111111-2222-3333-4444-555555555555`, son UUIDv8 est
+`1a4f8704-0699-8f43-9177-c7f0e3d1f036`.
 
 Le bootstrap technique crée toujours uniquement Owner + Workspace. Les migrations
 et le démarrage de l'API ne créent aucun pipeline. Cette livraison ajoute l'appel
-API explicite, sans appel automatique depuis Blazor. « Business Jeu Vidéo »
-reste à venir en Phase 5.5. Aucun moteur de collecte,
+API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désormais
+son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
 ## Docker et n8n facultatif
