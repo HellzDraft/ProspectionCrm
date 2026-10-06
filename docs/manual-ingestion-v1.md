@@ -1,4 +1,4 @@
-# Ingestion manuelle de résultats — Phases 6.1 à 6.2.2
+# Ingestion manuelle de résultats — Phases 6.1 à 6.2.4
 
 Cette route reçoit des résultats déjà fournis par le client. Elle n'exécute aucune
 recherche réseau, collecte planifiée ou automatisation. La configuration et la
@@ -352,8 +352,9 @@ aucune modification des observations terminales ; ce journal n'est pas une prote
 contre un administrateur écrivant directement en SQL.
 
 Le POST et le GET SourceExecution exposent les mêmes versions, destinations et
-compteurs. **ContextSnapshotJson et les observations détaillées ne sont pas exposés
-publiquement** ; leurs endpoints de lecture appartiennent à la Phase 6.2.4.
+compteurs. Depuis la Phase 6.2.4, le contexte et les observations détaillées sont
+exposés par les routes de lecture dédiées décrites ci-dessous. SourceExecutionDto
+reste inchangé et ne contient pas ContextSnapshotJson.
 
 ## Identités persistantes — Phase 6.2.2
 
@@ -440,6 +441,87 @@ sérialisation des écritures coopératives. Un SQL externe peut encore fournir 
 aucun trigger de normalisation ou dispositif contre un administrateur n'est ajouté.
 Le fallback titre/société n'est pas une unicité SQL et ne déclenche aucune fusion.
 
+## Lecture de l'historique — Phase 6.2.4
+
+`IngestionHistoryController` délègue à `IIngestionHistoryReadService` /
+`IngestionHistoryReadService`. Les contrats POST d'ingestion, IngestionDto,
+SourceExecutionDto et le CRUD OpportunitySource restent inchangés. Aucune migration
+ni modification EF : dernière migration `20261006101923_Phase622PersistentSourceIdentities`.
+
+| Route GET | Réponse | Tri |
+| --- | --- | --- |
+| `/api/source-executions/{id}/history` | SourceExecutionHistoryDto | Sans pagination |
+| `/api/source-executions/{id}/items` | SourceExecutionItemsPageDto | ItemIndex ASC, Id ASC |
+| `/api/opportunities/{opportunityId}/observations` | OpportunityObservationsPageDto | ReceivedAt DESC, Id DESC |
+| `/api/opportunities/{opportunityId}/sources/{sourceId}/observations` | OpportunitySourceObservationsPageDto | ReceivedAt DESC, Id DESC |
+
+Les pages contiennent Offset, Limit, TotalCount, HasMore et Items, ainsi que les IDs
+de la ressource. La page d'exécution ajoute HistoryAvailable. `offset` vaut 0 par
+défaut et doit être positif ou nul ; `limit` vaut 50, entre 1 et 200. TotalCount
+compte toutes les lignes correspondant aux filtres avant pagination. HasMore est
+`offset + Items.Count < TotalCount` ; au-delà du total la page est vide, sans perdre
+TotalCount. Les identifiants terminent chaque tri pour rendre les pages déterministes.
+
+Les trois pages acceptent `outcomeCode` (created, updated, ignored, rejected,
+rolled-back, not-processed, cancelled, pending) et `decisionCode` (exact, sensible à
+la casse, non blanc, au plus 100 caractères, sans liste fermée). Aucun trim ou
+recalcul des clés historiques n'est effectué.
+
+Les deux routes d'observations acceptent `from` et `to`, des DateTimeOffset convertis
+en UTC, bornes inclusives sur ReceivedAt ; from > to est invalide. La route Opportunity
+accepte `sourceConfigurationId` et `savedSearchId`, appliqués à l'exécution parente.
+Un ID de filtre absent ou étranger au workspace produit une page vide, sans révéler
+son existence. La route provenance accepte `roleCode=external-id|source-url`.
+Elle compte et pagine les items distincts : deux liens de rôles vers la même
+provenance ne doublent jamais un item. Tous les liens Sources de l'item sont renvoyés,
+y compris les autres rôles et provenances, triés par RoleCode, OpportunitySourceIdSnapshot, Id.
+
+Les lectures passent par le Workspace V1 courant. Une ressource absente, étrangère
+ou une provenance rattachée à une autre Opportunity retourne 404. Une Opportunity
+archivée reste accessible. Les routes métier utilisent les IDs vivants ; les snapshots
+ne servent jamais à rendre adressable une ressource supprimée physiquement.
+Après suppression, les éléments restent lisibles depuis l'exécution, avec OpportunityId
+ou OpportunitySourceId null et les IDs snapshot préservés.
+
+`/history` contient Execution (le même SourceExecutionDto que l'ancienne route GET),
+ContextSnapshot et UnavailableReason. Le contexte est exactement celui enregistré,
+sans jointure vers les noms actuels ni exposition de ConfigurationJson. Le CriteriaJson
+historique est l'objet `savedSearch.criteria` du snapshot V1. Pour HistoryVersion=null,
+la réponse reste 200 : HistoryAvailable=false, ContextSnapshot=null,
+UnavailableReason="legacy-execution". La route `/items` retourne une page vide avec
+HistoryAvailable=false, même si l'exécution legacy possède des compteurs historiques.
+Pour HistoryVersion=1, ContextSnapshot est présent et UnavailableReason est null.
+
+Chaque item expose son exécution parente, ses valeurs brutes et normalisées,
+ses décisions, ses dates, ses IDs vivants et snapshots, ainsi que Sources.
+PayloadSnapshot, DecisionDetails et ContextSnapshot sont de vrais objets JSON ou null,
+jamais des chaînes JSON échappées. `HistoricalJsonReader` clone le RootElement avant
+de disposer le JsonDocument, préserve les champs futurs et ne masque pas une corruption.
+
+Les erreurs 400 sont des ProblemDetails avec code et detail contrôlés :
+InvalidPagination, InvalidOutcomeCode, InvalidDecisionCode, InvalidRoleCode,
+InvalidDateRange ; un identifiant de filtre mal formé utilise InvalidReference.
+Les 404 portent HistoryResourceNotFound. Aucun détail SQL ni texte d'exception
+n'est utilisé pour classifier les erreurs.
+
+Les requêtes utilisent AsNoTracking, Count puis tri/Skip/Take en SQL et une projection
+ciblée de l'item et de l'exécution. Une requête supplémentaire charge seulement les
+liens des IDs de la page. Par page non vide : quatre requêtes dans le service
+(existence, count, page, liens), plus la résolution Workspace V1 ; trois pour une
+page vide. Le contexte et les pages legacy nécessitent une seule requête de service.
+La route provenance utilise EXISTS, ce qui garantit l'unicité des items avant Count
+et pagination. Il n'y a ni chargement du graphe complet, ni requête par item.
+
+La lecture n'appelle jamais SaveChanges, n'acquiert pas de verrou consultatif et
+n'ouvre pas de transaction explicite. Les appels successifs utilisent la visibilité
+PostgreSQL habituelle : une écriture concurrente peut faire évoluer le total ou les
+pages entre requêtes ; aucune vue figée inter-pages n'est promise. Aucun POST, PUT
+ou DELETE d'observation ni correction de snapshot n'est exposé.
+
+`IngestionHistoryReadTests` vérifie ces contrats en HTTP sur PostgreSQL 18,
+y compris les erreurs, les suppressions, les deux rôles, les filtres, la pagination,
+le nombre borné de requêtes SQL et un snapshot de toutes les tables avant/après GET.
+
 ## Vérification et limites
 
 `IngestionTests` teste les routes HTTP sur PostgreSQL 18 jetable : mappage, rejeu,
@@ -463,11 +545,11 @@ charge les opportunités/provenances du workspace en mémoire ; les clés URL so
 persistées et indexées, mais les recherches SQL ciblées et l'optimisation pour des
 volumes importants restent à étudier. Les noms de société
 libres conservés dans le journal participent au fallback durable depuis 6.2.2.
-Les endpoints publics d'historique restent à réaliser en 6.2.4. Aucun Worker, queue, planification, réseau, n8n, retry
+Les lectures publiques d'historique sont disponibles depuis 6.2.4. Aucun Worker, queue, planification, réseau, n8n, retry
 automatique, scoring, IA, email ou automatisation métier n'est ajouté.
 
 ```powershell
-dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~PersistentSourceIdentity|FullyQualifiedName~OpportunitySource|FullyQualifiedName~Phase4ReconstructionTests"
+dotnet test ProspectionCrm.slnx --configuration Release --filter "FullyQualifiedName~IngestionHistoryReadTests|FullyQualifiedName~IngestionTests|FullyQualifiedName~IngestionHistoryTests|FullyQualifiedName~PersistentSourceIdentity|FullyQualifiedName~OpportunitySource|FullyQualifiedName~Phase4ReconstructionTests"
 dotnet build ProspectionCrm.slnx --configuration Release
 dotnet test ProspectionCrm.slnx --configuration Release
 ```

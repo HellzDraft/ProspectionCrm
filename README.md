@@ -262,7 +262,7 @@ API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désorm
 son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
-### 9. Ingestion manuelle et historique — Phases 6.1 à 6.2.2
+### 9. Ingestion manuelle et historique — Phases 6.1 à 6.2.4
 
 `POST /api/saved-searches/{savedSearchId}/ingestions` reçoit une étape cible explicite
 et un lot de 1 à 100 résultats fournis par le client. Il déduplique dans le workspace
@@ -278,8 +278,8 @@ sans recopier ConfigurationJson. `HistoryVersion = 1` distingue ces exécutions 
 legacy sans historique détaillé (`HistoryAvailable = false`).
 Les compteurs rejected, rolled-back, not-processed et cancelled distinguent l'élément
 fautif, les décisions annulées, les entrées non traitées et l'annulation en cours.
-Le détail est conservé en base ; aucun endpoint public de lecture détaillée n'est
-encore ajouté. La Phase 6.2.2 persiste maintenant WorkspaceId et NormalizedSourceUrl
+La Phase 6.2.4 expose le contexte et les observations historiques en lecture seule,
+paginée et isolée par workspace. La Phase 6.2.2 persiste WorkspaceId et NormalizedSourceUrl
 sur OpportunitySource, impose les FK du même workspace et les unicités URL par workspace
 et ExternalId par configuration. Elle ajoute le fallback historique et dans le lot,
 ainsi que le verrou partagé avec les CRUD OpportunitySource, Opportunity et Company.
@@ -288,6 +288,22 @@ ou suppression), et aucune nouvelle provenance vide n'est acceptée.
 La migration Phase622PersistentSourceIdentities préserve le legacy null/null mais
 refuse toute incohérence, URL invalide ou collision à résoudre avant l'upgrade.
 Les écritures SQL externes restent responsables de fournir la véritable clé normalisée.
+
+Les quatre routes de lecture sont :
+
+- `GET /api/source-executions/{id}/history` : contexte JSON enregistré et exécution ;
+- `GET /api/source-executions/{id}/items` : éléments par ItemIndex croissant ;
+- `GET /api/opportunities/{opportunityId}/observations` : observations par date décroissante ;
+- `GET /api/opportunities/{opportunityId}/sources/{sourceId}/observations` : observations distinctes d'une provenance.
+
+Les pages utilisent `offset=0`, `limit=50` (maximum 200), des filtres exacts d'issue et
+de décision, et pour les observations des bornes de date UTC inclusives. La route
+Opportunity accepte aussi configuration/recherche ; la route provenance accepte le rôle.
+Les JSON sont des objets, les IDs vivants restent distincts des IDs snapshot. Une
+exécution legacy reste accessible en 200 avec `legacy-execution` et une page vide.
+Les archives sont consultables ; après suppression physique, l'historique reste
+accessible depuis l'exécution. Aucune route de modification d'observation ni migration
+n'est ajoutée. La dernière migration reste `20261006101923_Phase622PersistentSourceIdentities`.
 
 Le contrat, la normalisation conservative, les compteurs et les limites de provenance
 sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).

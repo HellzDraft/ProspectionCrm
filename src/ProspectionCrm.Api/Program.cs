@@ -35,6 +35,7 @@ builder.Services.AddScoped<ISourceConfigurationService, SourceConfigurationServi
 builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISourceExecutionService, SourceExecutionService>();
 builder.Services.AddScoped<IIngestionService, IngestionService>();
+builder.Services.AddScoped<IIngestionHistoryReadService, IngestionHistoryReadService>();
 builder.Services.AddScoped<IOpportunitySourceService, OpportunitySourceService>();
 builder.Services.AddScoped<ICampaignService, CampaignService>();
 builder.Services.AddScoped<IApplicationService, ApplicationService>();
