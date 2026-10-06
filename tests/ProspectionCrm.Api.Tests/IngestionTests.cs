@@ -77,6 +77,8 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Equal("manual", execution.TriggerTypeCode);
         Assert.Equal(items.Length, execution.ItemsFound);
         Assert.Equal(execution.ItemsFound, execution.ItemsCreated + execution.ItemsUpdated + execution.ItemsIgnored);
+        Assert.True(execution.HistoryAvailable);
+        Assert.Equal((0, 0, 0, 0), (execution.ItemsRejected, execution.ItemsRolledBack, execution.ItemsNotProcessed, execution.ItemsCancelled));
         Assert.True(execution.FinishedAt >= execution.StartedAt);
         Assert.Null(execution.ErrorMessage);
         return result;
@@ -96,7 +98,8 @@ public sealed class IngestionTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(postgres.GetConnectionString());
         await connection.OpenAsync();
         var snapshot = new SortedDictionary<string, string>();
-        foreach (var table in db.Model.GetEntityTypes().Select(x => x.GetTableName()!).Distinct().Where(x => x != "SourceExecutions").Order())
+        foreach (var table in db.Model.GetEntityTypes().Select(x => x.GetTableName()!).Distinct()
+            .Where(x => x is not ("SourceExecutions" or "SourceExecutionItems" or "SourceExecutionItemSources")).Order())
         {
             await using var command = new NpgsqlCommand(
                 $"SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb)::text FROM \"{table}\" t", connection);
@@ -308,7 +311,12 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Empty(await db.Companies.ToArrayAsync());
         var execution = await db.SourceExecutions.SingleAsync();
         Assert.Equal("failed", execution.StatusCode);
-        Assert.Equal((1, 0, 0, 1), (execution.ItemsFound, execution.ItemsCreated, execution.ItemsUpdated, execution.ItemsIgnored));
+        Assert.Equal((1, 0, 0, 0), (execution.ItemsFound, execution.ItemsCreated, execution.ItemsUpdated, execution.ItemsIgnored));
+        Assert.Equal((1, 0, 0, 0), (execution.ItemsRejected, execution.ItemsRolledBack, execution.ItemsNotProcessed, execution.ItemsCancelled));
+        var item = await db.SourceExecutionItems.SingleAsync();
+        Assert.Equal(("rejected", IngestionHistoryCodes.MissingPersistentIdentity), (item.OutcomeCode, item.DecisionCode));
+        Assert.Null(item.OpportunityIdSnapshot);
+        Assert.NotNull(item.ProcessedAt);
     }
 
     [Theory]
@@ -329,7 +337,12 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Equal(before, await BusinessSnapshotAsync());
         var failed = (await client.GetFromJsonAsync<SourceExecutionDto>($"/api/source-executions/{problem.GetProperty("executionId").GetGuid()}"))!;
         Assert.Equal("failed", failed.StatusCode);
-        Assert.Equal((3, 0, 0, 3), (failed.ItemsFound, failed.ItemsCreated, failed.ItemsUpdated, failed.ItemsIgnored));
+        Assert.Equal((3, 0, 0, 0), (failed.ItemsFound, failed.ItemsCreated, failed.ItemsUpdated, failed.ItemsIgnored));
+        Assert.Equal((1, 2, 0, 0), (failed.ItemsRejected, failed.ItemsRolledBack, failed.ItemsNotProcessed, failed.ItemsCancelled));
+        await using var historyDb = Db();
+        var history = await historyDb.SourceExecutionItems.Where(x => x.SourceExecutionId == failed.Id).OrderBy(x => x.ItemIndex).ToArrayAsync();
+        Assert.Equal(new[] { "rolled-back", "rolled-back", "rejected" }, history.Select(x => x.OutcomeCode));
+        Assert.All(history, x => { Assert.Null(x.OpportunityId); Assert.Null(x.OpportunityIdSnapshot); Assert.NotNull(x.ProcessedAt); });
         Assert.True(failed.FinishedAt >= failed.StartedAt);
         Assert.Equal("AmbiguousIdentity", failed.ErrorMessage);
     }
@@ -456,7 +469,14 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Equal(before, await BusinessSnapshotAsync());
         var execution = await db.SourceExecutions.SingleAsync(x => x.Id == problem.GetProperty("executionId").GetGuid());
         Assert.Equal("failed", execution.StatusCode);
-        Assert.Equal((3, 0, 0, 3), (execution.ItemsFound, execution.ItemsCreated, execution.ItemsUpdated, execution.ItemsIgnored));
+        Assert.Equal((3, 0, 0, 0), (execution.ItemsFound, execution.ItemsCreated, execution.ItemsUpdated, execution.ItemsIgnored));
+        Assert.Equal(failFinalStatus ? (0, 3, 0, 0) : (1, 2, 0, 0),
+            (execution.ItemsRejected, execution.ItemsRolledBack, execution.ItemsNotProcessed, execution.ItemsCancelled));
+        var history = await db.SourceExecutionItems.Where(x => x.SourceExecutionId == execution.Id).OrderBy(x => x.ItemIndex).ToArrayAsync();
+        Assert.Equal(failFinalStatus ? new[] { "rolled-back", "rolled-back", "rolled-back" } : new[] { "rolled-back", "rolled-back", "rejected" },
+            history.Select(x => x.OutcomeCode));
+        Assert.All(history, x => { Assert.Null(x.OpportunityId); Assert.Null(x.OpportunityIdSnapshot); Assert.NotNull(x.ProcessedAt); });
+        Assert.Empty(await db.SourceExecutionItemSources.Where(x => x.SourceExecutionItem.SourceExecutionId == execution.Id).ToArrayAsync());
         Assert.Equal("PersistenceFailure", execution.ErrorMessage);
         Assert.DoesNotContain("reject_test_source", await response.Content.ReadAsStringAsync());
     }

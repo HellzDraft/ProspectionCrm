@@ -15,6 +15,17 @@ public class SourceExecution
     public int ItemsUpdated { get; set; }
     public int ItemsIgnored { get; set; }
     public string? ErrorMessage { get; set; }
+    public int? HistoryVersion { get; set; }
+    public int? ContractVersion { get; set; }
+    public int? NormalizationVersion { get; set; }
+    public Guid? TargetPipelineId { get; set; }
+    public Guid? TargetPipelineStageId { get; set; }
+    public string? ContextSnapshotJson { get; set; }
+    public int ItemsRejected { get; set; }
+    public int ItemsRolledBack { get; set; }
+    public int ItemsNotProcessed { get; set; }
+    public int ItemsCancelled { get; set; }
+    public ICollection<SourceExecutionItem> Items { get; set; } = [];
 
     public Workspace Workspace { get; set; } = null!;
     public SourceConfiguration SourceConfiguration { get; set; } = null!;

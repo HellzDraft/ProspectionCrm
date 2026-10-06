@@ -29,4 +29,5 @@ public class Opportunity
     public ICollection<EmailMessage> EmailMessages { get; set; } = new List<EmailMessage>();
     public ICollection<CalendarEvent> CalendarEvents { get; set; } = new List<CalendarEvent>();
     public ICollection<ActivityEntry> ActivityEntries { get; set; } = [];
+    public ICollection<SourceExecutionItem> SourceExecutionItems { get; set; } = [];
 }

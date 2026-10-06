@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
@@ -10,6 +11,7 @@ using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.Ingestions;
 using ProspectionCrm.Api.Dtos.SourceExecutions;
 using ProspectionCrm.Api.Entities;
+using static ProspectionCrm.Api.Services.IngestionHistoryCodes;
 
 namespace ProspectionCrm.Api.Services;
 
@@ -66,17 +68,24 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         var execution = new SourceExecution
         {
             WorkspaceId = workspaceId, SourceConfigurationId = configuration.Id, SavedSearchId = search.Id,
-            TriggerTypeCode = "manual", StatusCode = "running", ItemsFound = request.Items!.Count
+            TriggerTypeCode = "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
+            HistoryVersion = 1, ContractVersion = 1, NormalizationVersion = 1,
+            TargetPipelineId = pipeline.Id, TargetPipelineStageId = stage.Id,
+            ContextSnapshotJson = IngestionHistory.Context(configuration, search, pipeline, stage)
         };
+        var history = request.Items.Select((item, index) => IngestionHistory.Input(execution, item, index)).ToArray();
+        execution.Items = history.ToList();
         dbContext.SourceExecutions.Add(execution);
         await dbContext.SaveChangesAsync(cancellationToken);
-        // A failed lot retains its execution, but NOTHING written after this point.
+        // Keep the immutable inputs on rollback; business writes and provisional decisions follow.
         await transaction.CreateSavepointAsync(BusinessSavepoint, cancellationToken);
         using var scope = logger.BeginScope(new Dictionary<string, object>
         {
             ["WorkspaceId"] = workspaceId, ["SavedSearchId"] = search.Id, ["SourceExecutionId"] = execution.Id
         });
         logger.LogInformation("Manual ingestion started with {ItemCount} items", execution.ItemsFound);
+        var provisional = new Dictionary<int, IngestionHistory.Provisional>();
+        var currentIndex = 0;
         try
         {
             // Small V1 batches, normalized in .NET with identical rules for stored and incoming
@@ -85,10 +94,11 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                 .Where(x => x.WorkspaceId == workspaceId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var sources = await dbContext.OpportunitySources
                 .Where(x => x.Opportunity.WorkspaceId == workspaceId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
-            var seen = new HashSet<(string?, string?, string, string?)>();
+            var seen = new Dictionary<(string?, string?, string, string?), int>();
             var outcomes = new List<IngestionItemDto>();
             for (var index = 0; index < request.Items.Count; index++)
             {
+                currentIndex = index;
                 cancellationToken.ThrowIfCancellationRequested();
                 var item = request.Items[index];
                 var url = IngestionNormalization.UrlKey(item.SourceUrl);
@@ -109,7 +119,8 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                 var candidates = externalMatches.Concat(urlMatches).Concat(textMatches).Distinct().ToArray();
                 if (candidates.Length > 1)
                     throw new IdentityConflict(IngestionErrorCode.AmbiguousIdentity,
-                        "The supplied identities match multiple opportunities. No automatic merge was performed.", index);
+                        "The supplied identities match multiple opportunities. No automatic merge was performed.", index,
+                        candidates.Order().ToArray());
                 var opportunityId = externalMatches.Cast<Guid?>().FirstOrDefault()
                     ?? urlMatches.Cast<Guid?>().FirstOrDefault() ?? textMatches.Cast<Guid?>().FirstOrDefault();
                 var created = opportunityId is null;
@@ -131,18 +142,44 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
                 }
 
                 var signature = (item.ExternalId, url, title, company);
-                if (!seen.Add(signature))
+                var observation = history[index];
+                if (seen.TryGetValue(signature, out var firstIndex))
                 {
                     execution.ItemsIgnored++;
-                    outcomes.Add(new(index, opportunityId!.Value, "ignored"));
+                    IngestionHistory.Decide(observation, Outcomes.Ignored, DuplicateInBatch, opportunityId!.Value,
+                        new { duplicateOfItemIndex = firstIndex });
+                    // No provenance observation or links for an internal duplicate.
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    provisional.Add(index, new(Outcomes.Ignored, opportunityId, firstIndex));
+                    outcomes.Add(new(index, opportunityId.Value, Outcomes.Ignored));
+                    currentIndex = index + 1;
                     continue;
                 }
-                Observe(sources, opportunityId!.Value, configuration, search.Id, execution, item.ExternalId, url);
+                seen.Add(signature, index);
+                var usedSources = Observe(sources, opportunityId!.Value, configuration, search.Id, execution, item.ExternalId, url);
+                foreach (var (source, role) in usedSources.DistinctBy(x => (x.Source.Id, x.Role)))
+                    dbContext.SourceExecutionItemSources.Add(new SourceExecutionItemSource
+                    {
+                        WorkspaceId = workspaceId, SourceExecutionItemId = observation.Id,
+                        OpportunitySourceId = source.Id, OpportunitySourceIdSnapshot = source.Id, RoleCode = role
+                    });
+                var matches = new List<string>();
+                if (externalMatches.Length > 0) matches.Add(Identities.ExternalId);
+                if (urlMatches.Length > 0) matches.Add(Identities.SourceUrl);
+                if (textMatches.Length > 0) matches.Add(Identities.TitleCompany);
+                var provided = new List<string>();
+                if (item.ExternalId is not null) provided.Add(Identities.ExternalId);
+                if (url is not null) provided.Add(Identities.SourceUrl);
+                IngestionHistory.Decide(observation, created ? Outcomes.Created : Outcomes.Updated,
+                    created ? CreatedNewOpportunity : IngestionHistory.MatchDecision(matches), opportunityId.Value,
+                    created ? (object)new { providedIdentities = provided } : new { matchedBy = matches });
                 if (created) execution.ItemsCreated++;
                 else execution.ItemsUpdated++;
                 // One opportunity and its provenance are always saved together, in our transaction.
                 await dbContext.SaveChangesAsync(cancellationToken);
-                outcomes.Add(new(index, opportunityId.Value, created ? "created" : "updated"));
+                provisional.Add(index, new(observation.OutcomeCode, opportunityId, null));
+                outcomes.Add(new(index, opportunityId.Value, observation.OutcomeCode));
+                currentIndex = index + 1;
             }
             execution.StatusCode = "succeeded";
             execution.FinishedAt = Later(DateTimeOffset.UtcNow, execution.StartedAt);
@@ -156,12 +193,14 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         }
         catch (IdentityConflict conflict)
         {
-            await FinishFailedAsync(transaction, execution, "failed", conflict.Code.ToString());
+            var decision = conflict.Code == IngestionErrorCode.AmbiguousIdentity ? AmbiguousIdentity : MissingPersistentIdentity;
+            await FinishFailedAsync(transaction, execution, "failed", decision, conflict.Index, provisional,
+                conflict.Candidates is null ? null : JsonSerializer.Serialize(new { candidateOpportunityIds = conflict.Candidates }));
             return new(IngestionStatus.Conflict, Error: new(conflict.Code, conflict.Message, conflict.Index, execution.Id));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await FinishFailedAsync(transaction, execution, "cancelled", "RequestCancelled");
+            await FinishFailedAsync(transaction, execution, "cancelled", RequestCancelled, currentIndex, provisional);
             throw;
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
@@ -170,20 +209,20 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
             ConstraintName: "UX_OpportunitySources_SourceConfiguration_ExternalId" or "UX_OpportunitySources_Opportunity_SourceUrl"
         })
         {
-            await FinishFailedAsync(transaction, execution, "failed", nameof(IngestionErrorCode.ConcurrentIdentityChange));
+            await FinishFailedAsync(transaction, execution, "failed", ConcurrentIdentityChange, currentIndex, provisional);
             return new(IngestionStatus.Conflict, Error: new(IngestionErrorCode.ConcurrentIdentityChange,
                 "A source identity was concurrently modified. The entire lot was rolled back.", ExecutionId: execution.Id));
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "Manual ingestion failed; rolling back business writes");
-            await FinishFailedAsync(transaction, execution, "failed", nameof(IngestionErrorCode.PersistenceFailure));
+            await FinishFailedAsync(transaction, execution, "failed", PersistenceFailure, currentIndex, provisional);
             return new(IngestionStatus.Failed, Error: new(IngestionErrorCode.PersistenceFailure,
                 "The ingestion could not be persisted. The entire lot was rolled back.", ExecutionId: execution.Id));
         }
     }
 
-    private void Observe(List<OpportunitySource> sources, Guid opportunityId, SourceConfiguration configuration,
+    private IReadOnlyList<(OpportunitySource Source, string Role)> Observe(List<OpportunitySource> sources, Guid opportunityId, SourceConfiguration configuration,
         Guid searchId, SourceExecution execution, string? externalId, string? url)
     {
         OpportunitySource Add(string? external, string? sourceUrl)
@@ -217,21 +256,67 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         foreach (var source in urlSources.Concat(externalSource is null ? [] : new[] { externalSource }).Distinct())
             source.LastSeenAt = Later(execution.StartedAt, Later(source.FirstSeenAt, source.LastSeenAt ?? source.FirstSeenAt));
         // Never replace existing provenance identifiers, URLs, origin search/execution or label.
+        var used = new List<(OpportunitySource Source, string Role)>();
+        if (externalId is not null && externalSource is not null) used.Add((externalSource, Identities.ExternalId));
+        if (url is not null)
+        {
+            foreach (var source in sources.Where(x => x.OpportunityId == opportunityId
+                && IngestionNormalization.UrlKey(x.SourceUrl) == url))
+                used.Add((source, Identities.SourceUrl));
+        }
+        return used;
     }
 
-    private async Task FinishFailedAsync(IDbContextTransaction transaction, SourceExecution execution, string status, string error)
+    private async Task FinishFailedAsync(IDbContextTransaction transaction, SourceExecution execution, string status,
+        string error, int currentIndex, IReadOnlyDictionary<int, IngestionHistory.Provisional> provisional,
+        string? rejectionDetails = null)
     {
         // Cleanup must not inherit a cancelled HTTP token. Bound it, with no automatic retry.
         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await transaction.RollbackToSavepointAsync(BusinessSavepoint, cleanup.Token);
         dbContext.ChangeTracker.Clear();
         var finished = Later(DateTimeOffset.UtcNow, execution.StartedAt);
-        await dbContext.SourceExecutions.Where(x => x.Id == execution.Id).ExecuteUpdateAsync(s => s
-            .SetProperty(x => x.StatusCode, status).SetProperty(x => x.FinishedAt, finished)
-            .SetProperty(x => x.ItemsCreated, 0).SetProperty(x => x.ItemsUpdated, 0)
-            .SetProperty(x => x.ItemsIgnored, execution.ItemsFound).SetProperty(x => x.ErrorMessage, error), cleanup.Token);
+        var persisted = await dbContext.SourceExecutions.Include(x => x.Items)
+            .SingleAsync(x => x.Id == execution.Id, cleanup.Token);
+        persisted.StatusCode = status;
+        persisted.FinishedAt = finished;
+        persisted.ErrorMessage = error;
+        persisted.ItemsCreated = persisted.ItemsUpdated = persisted.ItemsIgnored = 0;
+        foreach (var item in persisted.Items.OrderBy(x => x.ItemIndex))
+        {
+            item.ProcessedAt = Later(finished, item.ReceivedAt);
+            item.OpportunityId = item.OpportunityIdSnapshot = null;
+            if (provisional.TryGetValue(item.ItemIndex, out var previous))
+            {
+                item.OutcomeCode = Outcomes.RolledBack;
+                item.DecisionCode = RolledBackAfterFailure;
+                item.DecisionDetailsJson = JsonSerializer.Serialize(new
+                {
+                    provisionalOutcomeCode = previous.OutcomeCode, provisionalOpportunityId = previous.OpportunityId
+                });
+                persisted.ItemsRolledBack++;
+            }
+            else if (item.ItemIndex == currentIndex)
+            {
+                var cancelled = status == "cancelled";
+                item.OutcomeCode = cancelled ? Outcomes.Cancelled : Outcomes.Rejected;
+                item.DecisionCode = error;
+                item.DecisionDetailsJson = cancelled
+                    ? JsonSerializer.Serialize(new { cancelledAtItemIndex = currentIndex }) : rejectionDetails;
+                if (cancelled) persisted.ItemsCancelled++;
+                else persisted.ItemsRejected++;
+            }
+            else
+            {
+                item.OutcomeCode = Outcomes.NotProcessed;
+                item.DecisionCode = NotProcessedAfterFailure;
+                item.DecisionDetailsJson = JsonSerializer.Serialize(new { blockedByItemIndex = currentIndex });
+                persisted.ItemsNotProcessed++;
+            }
+        }
+        await dbContext.SaveChangesAsync(cleanup.Token);
         await transaction.CommitAsync(cleanup.Token);
-        logger.LogWarning("Manual ingestion ended with {Status} and {ErrorCode}; all {ItemCount} items rejected",
+        logger.LogWarning("Manual ingestion ended with {Status} and {ErrorCode}; all {ItemCount} business decisions rolled back",
             status, error, execution.ItemsFound);
     }
 
@@ -258,10 +343,11 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
     private static IngestionResult NotFound() => Reject(IngestionStatus.NotFound, IngestionErrorCode.ResourceNotFound,
         "The saved search, configuration, pipeline or target stage does not exist in the current workspace.");
     private static IngestionResult Reject(IngestionStatus status, IngestionErrorCode code, string detail) => new(status, Error: new(code, detail));
-    private sealed class IdentityConflict(IngestionErrorCode code, string message, int index) : Exception(message)
+    private sealed class IdentityConflict(IngestionErrorCode code, string message, int index, Guid[]? candidates = null) : Exception(message)
     {
         internal IngestionErrorCode Code { get; } = code;
         internal int Index { get; } = index;
+        internal Guid[]? Candidates { get; } = candidates;
     }
     private static SourceExecutionDto ToDto(SourceExecution execution) => new()
     {
@@ -269,6 +355,16 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         TriggerTypeCode = execution.TriggerTypeCode, StatusCode = execution.StatusCode,
         StartedAt = execution.StartedAt, FinishedAt = execution.FinishedAt, ItemsFound = execution.ItemsFound,
         ItemsCreated = execution.ItemsCreated, ItemsUpdated = execution.ItemsUpdated, ItemsIgnored = execution.ItemsIgnored,
-        ErrorMessage = execution.ErrorMessage
+        ErrorMessage = execution.ErrorMessage,
+        HistoryAvailable = execution.HistoryVersion.HasValue,
+        HistoryVersion = execution.HistoryVersion,
+        ContractVersion = execution.ContractVersion,
+        NormalizationVersion = execution.NormalizationVersion,
+        TargetPipelineId = execution.TargetPipelineId,
+        TargetPipelineStageId = execution.TargetPipelineStageId,
+        ItemsRejected = execution.ItemsRejected,
+        ItemsRolledBack = execution.ItemsRolledBack,
+        ItemsNotProcessed = execution.ItemsNotProcessed,
+        ItemsCancelled = execution.ItemsCancelled,
     };
 }

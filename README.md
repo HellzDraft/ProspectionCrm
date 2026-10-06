@@ -88,8 +88,9 @@ Attendre que PostgreSQL soit `healthy`. Il écoute uniquement sur `127.0.0.1:543
 et conserve ses données dans le volume Compose `postgres_data`.
 
 Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
-`20260925101154_InitialCrmSchema`, puis
-`20260929150147_Phase42PipelineLifecycleAndDefault` :
+`20260925101154_InitialCrmSchema`,
+`20260929150147_Phase42PipelineLifecycleAndDefault`, puis
+`20261006091016_Phase621IngestionHistoryFoundation` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -260,14 +261,26 @@ API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désorm
 son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
 scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
 
-### 9. Ingestion manuelle de résultats — Phase 6.1
+### 9. Ingestion manuelle et historique — Phases 6.1 et 6.2.1
 
 `POST /api/saved-searches/{savedSearchId}/ingestions` reçoit une étape cible explicite
 et un lot de 1 à 100 résultats fournis par le client. Il déduplique dans le workspace
 entier, archives comprises, et enregistre Opportunity, provenance et SourceExecution
 sans modifier les données utilisateur des opportunités retrouvées. Une erreur annule
 les écritures métier du lot tout en conservant l'exécution échouée lorsque la base
-reste disponible. Aucun accès réseau, Company automatique ou migration n'est ajouté.
+reste disponible. Aucun accès réseau ni Company automatique n'est ajouté.
+
+La Phase 6.2.1 ajoute la migration `20261006091016_Phase621IngestionHistoryFoundation` :
+chaque nouvelle exécution conserve ses entrées dans `SourceExecutionItem`, ses liens
+de provenance dans `SourceExecutionItemSource` et un snapshot versionné du contexte,
+sans recopier ConfigurationJson. `HistoryVersion = 1` distingue ces exécutions du
+legacy sans historique détaillé (`HistoryAvailable = false`).
+Les compteurs rejected, rolled-back, not-processed et cancelled distinguent l'élément
+fautif, les décisions annulées, les entrées non traitées et l'annulation en cours.
+Le détail est conservé en base ; aucun endpoint public de lecture détaillée n'est
+encore ajouté. L'identité URL persistante, l'index normalisé de provenance,
+le durcissement OpportunitySource, le fallback durable titre/société et le verrou
+partagé avec les CRUD restent prévus pour 6.2.2.
 
 Le contrat, la normalisation conservative, les compteurs et les limites de provenance
 sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).

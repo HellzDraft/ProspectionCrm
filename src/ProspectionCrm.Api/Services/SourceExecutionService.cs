@@ -42,6 +42,16 @@ public class SourceExecutionService(ProspectionCrmDbContext dbContext, ICurrentW
         ItemsCreated = entity.ItemsCreated,
         ItemsUpdated = entity.ItemsUpdated,
         ItemsIgnored = entity.ItemsIgnored,
-        ErrorMessage = entity.ErrorMessage
+        ErrorMessage = entity.ErrorMessage,
+        HistoryAvailable = entity.HistoryVersion.HasValue,
+        HistoryVersion = entity.HistoryVersion,
+        ContractVersion = entity.ContractVersion,
+        NormalizationVersion = entity.NormalizationVersion,
+        TargetPipelineId = entity.TargetPipelineId,
+        TargetPipelineStageId = entity.TargetPipelineStageId,
+        ItemsRejected = entity.ItemsRejected,
+        ItemsRolledBack = entity.ItemsRolledBack,
+        ItemsNotProcessed = entity.ItemsNotProcessed,
+        ItemsCancelled = entity.ItemsCancelled,
     };
 }

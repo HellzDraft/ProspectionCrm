@@ -18,6 +18,8 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<SourceConfiguration> SourceConfigurations => Set<SourceConfiguration>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<SourceExecution> SourceExecutions => Set<SourceExecution>();
+    public DbSet<SourceExecutionItem> SourceExecutionItems => Set<SourceExecutionItem>();
+    public DbSet<SourceExecutionItemSource> SourceExecutionItemSources => Set<SourceExecutionItemSource>();
     public DbSet<OpportunitySource> OpportunitySources => Set<OpportunitySource>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignOpportunity> CampaignOpportunities => Set<CampaignOpportunity>();

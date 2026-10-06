@@ -14,4 +14,14 @@ public class SourceExecutionDto
     public int ItemsUpdated { get; set; }
     public int ItemsIgnored { get; set; }
     public string? ErrorMessage { get; set; }
+    public bool HistoryAvailable { get; set; }
+    public int? HistoryVersion { get; set; }
+    public int? ContractVersion { get; set; }
+    public int? NormalizationVersion { get; set; }
+    public Guid? TargetPipelineId { get; set; }
+    public Guid? TargetPipelineStageId { get; set; }
+    public int ItemsRejected { get; set; }
+    public int ItemsRolledBack { get; set; }
+    public int ItemsNotProcessed { get; set; }
+    public int ItemsCancelled { get; set; }
 }

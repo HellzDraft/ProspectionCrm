@@ -17,4 +17,5 @@ public class OpportunitySource
     public SourceConfiguration? SourceConfiguration { get; set; }
     public SavedSearch? SavedSearch { get; set; }
     public SourceExecution? SourceExecution { get; set; }
+    public ICollection<SourceExecutionItemSource> ExecutionItemSources { get; set; } = [];
 }
