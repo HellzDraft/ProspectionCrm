@@ -286,8 +286,9 @@ La clé permanente du quatrième template est `business-game-dev`. Pour le works
 Le bootstrap technique crée toujours uniquement Owner + Workspace. Les migrations
 et le démarrage de l'API ne créent aucun pipeline. Cette livraison ajoute l'appel
 API explicite, sans appel automatique depuis Blazor. La Phase 5 possède désormais
-son catalogue initial complet, entièrement configurable après création. Aucun moteur de collecte,
-scoring, IA, automatisation, SavedSearch ou SourceConfiguration n'est ajouté.
+son catalogue initial complet, entièrement configurable après création. Cette étape
+d'initialisation ne crée aucune SavedSearch ou SourceConfiguration et ne déclenche
+ni collecte, ni scoring, ni automatisation.
 
 ### 9. Ingestion manuelle et historique — Phases 6.1 à 6.2.4
 
@@ -296,7 +297,7 @@ et un lot de 1 à 100 résultats fournis par le client. Il déduplique dans le w
 entier, archives comprises, et enregistre Opportunity, provenance et SourceExecution
 sans modifier les données utilisateur des opportunités retrouvées. Une erreur annule
 les écritures métier du lot tout en conservant l'exécution échouée lorsque la base
-reste disponible. Aucun accès réseau ni Company automatique n'est ajouté.
+reste disponible. Cette route n'effectue aucun accès réseau et ne crée aucune Company.
 
 La Phase 6.2.1 ajoute la migration `20261006091016_Phase621IngestionHistoryFoundation` :
 chaque nouvelle exécution conserve ses entrées dans `SourceExecutionItem`, ses liens
@@ -334,6 +335,23 @@ n'est ajoutée. La dernière migration reste `20261006101923_Phase622PersistentS
 
 Le contrat, la normalisation conservative, les compteurs et les limites de provenance
 sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).
+
+## Collecte RSS/Atom manuelle — Phase 6.3
+
+`POST /api/saved-searches/{savedSearchId}/collect` reçoit seulement
+`{"pipelineStageId":"<guid>"}`. Une recherche active de source `rss` peut récupérer
+un flux public RSS 2.0 ou Atom 1.0 via HTTPS, puis réutiliser l'ingestion et sa
+déduplication existantes. La réponse 201 contient `ingestion` et `summary`.
+
+`CriteriaJson` accepte uniquement `maxItems` (1–100, défaut 100) et
+`defaultCompanyName` facultatif. SearchUrl ne doit contenir aucun secret ; aucune
+authentification réseau n'est supportée. Le transport borne délai, taille et redirects,
+et protège les connexions DNS contre SSRF/rebinding. Les échecs après tentative sont
+historisés sans item ; les changements de configuration pendant le réseau sont rejetés
+sous verrou avant ingestion. Aucun Worker, planification ou migration n'est ajouté.
+
+Voir [le contrat RSS/Atom V1](docs/rss-atom-collection-v1.md) pour le mapping,
+les protections, les erreurs, les tests et les limites.
 
 ## Docker et n8n facultatif
 

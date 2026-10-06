@@ -8,6 +8,7 @@ using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.Ingestions;
 using ProspectionCrm.Api.Dtos.SourceExecutions;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Collection;
 using static ProspectionCrm.Api.Services.IngestionHistoryCodes;
 
 namespace ProspectionCrm.Api.Services;
@@ -17,7 +18,15 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
 {
     private const string BusinessSavepoint = "ingestion_business";
 
-    public async Task<IngestionResult> IngestAsync(Guid savedSearchId, IngestionRequest request, CancellationToken cancellationToken)
+    public Task<IngestionResult> IngestAsync(Guid savedSearchId, IngestionRequest request, CancellationToken cancellationToken) =>
+        IngestCoreAsync(savedSearchId, request, null, cancellationToken);
+
+    public Task<IngestionResult> IngestAsync(Guid savedSearchId, IngestionRequest request,
+        CollectionPrecondition precondition, CancellationToken cancellationToken) =>
+        IngestCoreAsync(savedSearchId, request, precondition, cancellationToken);
+
+    private async Task<IngestionResult> IngestCoreAsync(Guid savedSearchId, IngestionRequest request,
+        CollectionPrecondition? precondition, CancellationToken cancellationToken)
     {
         var invalid = Validate(request);
         if (invalid is not null) return new(IngestionStatus.InvalidRequest, Error: invalid);
@@ -51,9 +60,14 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
             $"SELECT * FROM \"Pipelines\" WHERE \"Id\" = {search.PipelineId} AND \"WorkspaceId\" = {workspaceId} FOR SHARE")
             .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         if (configuration is null || pipeline is null) return NotFound();
-        var stage = await dbContext.PipelineStages.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == request.PipelineStageId && x.Pipeline.WorkspaceId == workspaceId, cancellationToken);
+        var stage = await dbContext.PipelineStages.FromSqlInterpolated(
+            $"SELECT s.* FROM \"PipelineStages\" s JOIN \"Pipelines\" p ON p.\"Id\" = s.\"PipelineId\" WHERE s.\"Id\" = {request.PipelineStageId} AND p.\"WorkspaceId\" = {workspaceId} FOR SHARE OF s")
+            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         if (stage is null) return NotFound();
+        if (precondition is not null && (precondition.WorkspaceId != workspaceId
+            || precondition.Fingerprint != CollectionFingerprint.Create(search, configuration, pipeline, stage)))
+            return Reject(IngestionStatus.Conflict, IngestionErrorCode.CollectionConfigurationChanged,
+                "The collection configuration changed during retrieval. No collected items were ingested.");
         if (stage.PipelineId != pipeline.Id)
             return Reject(IngestionStatus.Conflict, IngestionErrorCode.WrongPipeline, "The target stage must belong to the saved search pipeline.");
         if (!search.Enabled || search.ArchivedAt is not null || !configuration.Enabled || configuration.ArchivedAt is not null
@@ -64,6 +78,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         {
             WorkspaceId = workspaceId, SourceConfigurationId = configuration.Id, SavedSearchId = search.Id,
             TriggerTypeCode = "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
+            StartedAt = precondition?.StartedAt ?? DateTimeOffset.UtcNow,
             HistoryVersion = 1, ContractVersion = 1, NormalizationVersion = 1,
             TargetPipelineId = pipeline.Id, TargetPipelineStageId = stage.Id,
             ContextSnapshotJson = IngestionHistory.Context(configuration, search, pipeline, stage)
@@ -227,7 +242,8 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Manual ingestion failed; rolling back business writes");
+            if (precondition is null) logger.LogError(exception, "Manual ingestion failed; rolling back business writes");
+            else logger.LogError("Collection ingestion failed with {Code}; rolling back business writes", PersistenceFailure);
             await FinishFailedAsync(transaction, execution, "failed", PersistenceFailure, currentIndex, provisional);
             return new(IngestionStatus.Failed, Error: new(IngestionErrorCode.PersistenceFailure,
                 "The ingestion could not be persisted. The entire lot was rolled back.", ExecutionId: execution.Id));

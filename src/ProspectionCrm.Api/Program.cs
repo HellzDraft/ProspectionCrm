@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Services;
+using ProspectionCrm.Api.Services.Collection;
 using ProspectionCrm.Api.Storage;
 using Serilog;
 
@@ -35,6 +36,18 @@ builder.Services.AddScoped<ISourceConfigurationService, SourceConfigurationServi
 builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISourceExecutionService, SourceExecutionService>();
 builder.Services.AddScoped<IIngestionService, IngestionService>();
+builder.Services.AddOptions<RssCollectionOptions>()
+    .Bind(builder.Configuration.GetRequiredSection(RssCollectionOptions.SectionName))
+    .Validate(options => options.IsValid(), "RssCollection options are outside the supported bounds.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IRssDnsResolver, RssDnsResolver>();
+builder.Services.AddSingleton<IRssSocketConnector, RssSocketConnector>();
+builder.Services.AddSingleton<RssConnectionFactory>();
+builder.Services.AddSingleton<IRssFeedTransport, RssFeedTransport>();
+builder.Services.AddSingleton<RssAtomFeedParser>();
+builder.Services.AddSingleton<ISourceAdapter, RssAtomSourceAdapter>();
+builder.Services.AddSingleton<SourceAdapterRegistry>();
+builder.Services.AddScoped<ISourceCollectionService, SourceCollectionService>();
 builder.Services.AddScoped<IIngestionHistoryReadService, IngestionHistoryReadService>();
 builder.Services.AddScoped<IOpportunitySourceService, OpportunitySourceService>();
 builder.Services.AddScoped<ICampaignService, CampaignService>();

@@ -1,4 +1,4 @@
-# Ingestion manuelle de résultats — Phases 6.1 à 6.2.6
+# Ingestion manuelle de résultats — Phases 6.1 à 6.2.6, extension 6.3
 
 Cette route reçoit des résultats déjà fournis par le client. Elle n'exécute aucune
 recherche réseau, collecte planifiée ou automatisation. La configuration et la
@@ -540,8 +540,22 @@ Les périmètres initialement prévus pour 6.2.3 et 6.2.5 ont été absorbés pa
 GitHub Actions restaure, compile en Release et lance désormais **la suite complète**
 avec Docker/Testcontainers isolés, sans base de développement ni secrets. Les TRX
 sont conservés dans l'artifact `test-results`, y compris en cas d'échec des tests.
-Cette consolidation clôt la Phase 6.2 ; le premier adaptateur réel appartient à 6.3.
-Aucun adaptateur réseau, Worker ou collecte planifiée n'est implémenté ici.
+Cette consolidation clôt la Phase 6.2. L'extension réseau de la Phase 6.3 est
+documentée dans [Collecte RSS/Atom V1](rss-atom-collection-v1.md).
+
+## Phase 6.3 — adaptateur RSS/Atom manuel
+
+La nouvelle route `POST /api/saved-searches/{id}/collect` récupère un flux public
+HTTPS, normalise RSS 2.0/Atom 1.0 puis appelle ce même moteur. La route `/ingestions`
+et ses DTO restent inchangés. Seul l'appel interne provenant d'un adaptateur fournit
+une précondition de contexte SHA-256, comparée sous verrou avant toute écriture métier.
+L'étape cible est explicitement relue sous verrou de ligne avec les autres ressources.
+
+Les rejets avant réseau ne créent pas d'exécution. Un échec après tentative conserve
+une exécution terminale avec contexte initial, compteurs à zéro et aucun item ; les
+routes d'historique existantes la lisent avec HistoryAvailable=true. Une ingestion
+réussie ou rejetée avec son executionId n'engendre jamais une seconde exécution.
+Les règles de déduplication restent inchangées ; aucune migration n'est créée.
 
 ## Vérification et limites
 
@@ -566,7 +580,8 @@ charge les opportunités/provenances du workspace en mémoire ; les clés URL so
 persistées et indexées, mais les recherches SQL ciblées et l'optimisation pour des
 volumes importants restent à étudier. Les noms de société
 libres conservés dans le journal participent au fallback durable depuis 6.2.2.
-Les lectures publiques d'historique sont disponibles depuis 6.2.4. Aucun Worker, queue, planification, réseau, n8n, retry
+Les lectures publiques d'historique sont disponibles depuis 6.2.4 ; la collecte réseau
+RSS/Atom manuelle depuis 6.3. Aucun Worker, queue, planification, n8n, retry
 automatique, scoring, IA, email ou automatisation métier n'est ajouté.
 
 ```powershell
