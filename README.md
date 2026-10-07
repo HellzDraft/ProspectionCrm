@@ -93,8 +93,9 @@ Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20261006091016_Phase621IngestionHistoryFoundation`,
 `20261006101923_Phase622PersistentSourceIdentities`,
 `20261007064337_Phase71PersistentCollectionJobs`,
-`20261007074738_Phase72CollectionWorkerLeases`, puis
-`20261007083908_Phase73CollectionRetries` :
+`20261007074738_Phase72CollectionWorkerLeases`,
+`20261007083908_Phase73CollectionRetries`, puis
+`20261007094120_Phase74CollectionScheduling` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -148,7 +149,7 @@ toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 
 source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
 Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
 et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
-les contrats métier. La migration finale est `20261007083908_Phase73CollectionRetries`,
+les contrats métier. La migration finale est `20261007094120_Phase74CollectionScheduling`,
 sans migration en attente ni divergence du modèle EF.
 
 Commande locale équivalente à la CI (Docker doit être démarré) :
@@ -392,7 +393,7 @@ relatives, avec streams et annulation. `LocalFileStorage` refuse les sorties de 
 et les écrasements ; la suppression est idempotente. Cette infrastructure n'est pas
 encore reliée à un endpoint ou formulaire d'upload/download.
 
-## File persistante et Worker de collecte — Phases 7.1 à 7.3
+## File persistante, Worker et planification — Phases 7.1 à 7.4
 
 `POST /api/saved-searches/{savedSearchId}/collection-jobs` reçoit un
 `pipelineStageId` non vide et renvoie **202 Accepted**, le job `queued` et sa
@@ -448,8 +449,28 @@ le lease de 30 à 3600 secondes, sans heartbeat. Le délai initial de retry va d
 1 à 3600 secondes ; son plafond est au moins égal à l’initial et au plus 86400.
 Le Worker attend quand aucun travail ne progresse, sans timer de backoff en mémoire.
 
-Toujours absents : planification quotidienne, génération périodique de jobs
-scheduled, scheduler/cron, n8n opérationnel, Blazor, IA/scoring/email.
+### Planification quotidienne UTC — Phase 7.4
+
+`PUT /api/saved-searches/{id}/schedule` configure une heure UTC `HH:mm` et une
+étape cible explicite. Les DTO SavedSearch exposent `schedule` : activation,
+heure, étape et `nextCollectionAt`. La prochaine échéance est persistée dans
+`SourceCollectionSchedules`, jamais déduite d'un timer en mémoire.
+
+Le scheduler .NET distinct crée uniquement des jobs `scheduled`. Création et
+avancement de l'échéance sont atomiques sous verrou PostgreSQL. Au redémarrage,
+au plus un rattrapage est produit ; un job identique queued/running coalesce
+l'occurrence et la prochaine échéance avance quand même. Les retries gardent
+le même job et son origine scheduled. Archiver/désactiver la recherche suspend
+sa planification ; restaurer la recherche ne la réactive pas.
+
+Le scheduler est désactivé par défaut : `SourceCollectionScheduler:Enabled=false`,
+`PollIntervalSeconds=30`, `BatchSize=50`. Activer séparément le Worker pour traiter
+les jobs. Migration `20261007094120_Phase74CollectionScheduling`, sans configuration
+ni job rétroactif. Voir [Planification des collectes V1](docs/source-collection-scheduling-v1.md)
+pour l'API, les validations, la concurrence, les options et les limites.
+
+Toujours absents : cron libre, fuseaux horaires utilisateur, calendrier ouvré,
+n8n opérationnel, déclencheurs événementiels automatiques, Blazor, IA/scoring/email.
 
 Voir [le contrat des jobs V1](docs/source-collection-jobs-v1.md). Les contrats
 synchrones `/collect`, `/ingestions`, historique et OpportunitySource restent inchangés.

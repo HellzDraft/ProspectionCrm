@@ -14,6 +14,8 @@ public class SavedSearch
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
 
+    public SourceCollectionSchedule? CollectionSchedule { get; set; }
+
     public Workspace Workspace { get; set; } = null!;
     public Pipeline Pipeline { get; set; } = null!;
     public SourceConfiguration SourceConfiguration { get; set; } = null!;

@@ -60,6 +60,13 @@ builder.Services.AddScoped<SourceCollectionJobGuard>();
 builder.Services.AddScoped<ISourceCollectionJobRecovery, SourceCollectionJobRecovery>();
 builder.Services.AddScoped<ISourceCollectionJobProcessor, SourceCollectionJobProcessor>();
 builder.Services.AddHostedService<SourceCollectionWorker>();
+builder.Services.AddOptions<SourceCollectionSchedulerOptions>()
+    .Bind(builder.Configuration.GetRequiredSection(SourceCollectionSchedulerOptions.SectionName))
+    .Validate(options => options.IsValid(), "SourceCollectionScheduler options are outside the supported bounds.")
+    .ValidateOnStart();
+builder.Services.AddScoped<SourceCollectionScheduleService>();
+builder.Services.AddScoped<ISourceCollectionSchedulingService, SourceCollectionSchedulingService>();
+builder.Services.AddHostedService<SourceCollectionScheduler>();
 builder.Services.AddScoped<ISourceCollectionContextResolver, SourceCollectionContextResolver>();
 builder.Services.AddScoped<ISourceCollectionJobService, SourceCollectionJobService>();
 builder.Services.AddScoped<IIngestionHistoryReadService, IngestionHistoryReadService>();

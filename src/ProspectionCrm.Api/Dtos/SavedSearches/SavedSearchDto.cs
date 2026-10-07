@@ -2,6 +2,7 @@ namespace ProspectionCrm.Api.Dtos.SavedSearches;
 
 public class SavedSearchDto
 {
+    public CollectionScheduleDto Schedule { get; set; } = new(false, null, null, null);
     public Guid Id { get; set; }
     public Guid PipelineId { get; set; }
     public Guid SourceConfigurationId { get; set; }

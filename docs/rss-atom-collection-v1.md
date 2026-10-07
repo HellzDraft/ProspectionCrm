@@ -197,7 +197,7 @@ depuis une base vierge avec bootstrap et 4 pipelines/28 étapes.
 
 La Phase 6.3 ne modifiait aucun fichier EF ni migration : sa dernière migration était
 `20261006101923_Phase622PersistentSourceIdentities`. La reconstruction vérifie désormais
-la chaîne incluant Phase73CollectionRetries, GetPendingMigrations vide et
+la chaîne incluant Phase74CollectionScheduling, GetPendingMigrations vide et
 HasPendingModelChanges=false. Le workflow CI complet et l'artifact TRX `test-results`
 sont conservés.
 

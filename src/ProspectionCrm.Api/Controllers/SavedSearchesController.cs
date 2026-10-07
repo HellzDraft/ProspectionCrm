@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ProspectionCrm.Api.Dtos.SavedSearches;
 using ProspectionCrm.Api.Services;
+using ProspectionCrm.Api.Services.Collection;
 
 namespace ProspectionCrm.Api.Controllers;
 
@@ -8,6 +9,15 @@ namespace ProspectionCrm.Api.Controllers;
 [Route("api/saved-searches")]
 public class SavedSearchesController(ISavedSearchService service) : ControllerBase
 {
+    [HttpPut("{id:guid}/schedule")]
+    public async Task<IActionResult> UpdateSchedule(Guid id, UpdateCollectionScheduleRequest request,
+        [FromServices] SourceCollectionScheduleService schedules, CancellationToken cancellationToken)
+    {
+        var (found, error) = await schedules.UpdateAsync(id, request, cancellationToken);
+        if (!found) return NotFound();
+        return error is null ? NoContent() : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SavedSearchDto>>> GetAll(CancellationToken cancellationToken,
         [FromQuery] bool includeArchived = false, [FromQuery] Guid? pipelineId = null, [FromQuery] Guid? sourceConfigurationId = null, [FromQuery] bool? enabled = null)

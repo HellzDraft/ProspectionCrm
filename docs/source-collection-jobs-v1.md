@@ -1,4 +1,4 @@
-# File persistante et Worker de collecte — Phases 7.1 à 7.3
+# File persistante, Worker et planification — Phases 7.1 à 7.4
 
 `SourceCollectionJob` est une commande persistante demandant une collecte future.
 `SourceExecution` est l'historique d'une tentative réellement commencée. L'enqueue
@@ -7,6 +7,8 @@ pas `AutomationExecution`.
 
 La Phase 7.2 ajoute un Worker .NET optionnel, le claim atomique et les leases.
 La Phase 7.3 ajoute retry, backoff persistant et réconciliation.
+La Phase 7.4 ajoute la [planification quotidienne UTC](source-collection-scheduling-v1.md)
+et la création atomique de jobs `scheduled` par un scheduler distinct.
 Le Worker est désactivé par défaut. Activé, il consomme les commandes persistées,
 y compris celles en attente avant son démarrage. Aucun endpoint `/run` ou
 `/process-next` n’est exposé. Les routes et les 14 champs du DTO Phase 7.1 restent
@@ -67,7 +69,7 @@ le pipeline d'une recherche référencée par un job, y compris historique.
 
 Les contraintes SQL contrôlent les codes, les formes des cinq états, le compteur
 non négatif et les dates. Aucun trigger de transition n'est ajouté. Le Worker utilise
-`running`, `succeeded` et `failed`. Les triggers `scheduled`, `event`, `retry`
+`running`, `succeeded` et `failed`. Le scheduler 7.4 produit `scheduled` ; `event` et `retry`
 restent acceptés par le schéma sans création automatique de ces commandes.
 
 ## Lecture et pagination
@@ -129,7 +131,7 @@ Down/Up et absence de divergence EF. Les suites RSS et ingestion restent exécut
 
 Le retry réutilise **le même job**. `AttemptCount` augmente uniquement lors du
 claim ; `EnqueuedAt` et `TriggerTypeCode` gardent leur origine. Un job manual reste
-manual, comme ses SourceExecution. Le numéro de tentative distingue les reprises ;
+manual, comme ses SourceExecution ; un job scheduled reste scheduled. Le numéro de tentative distingue les reprises ;
 aucun nouveau job `retry` n’est créé et aucune deuxième file n’existe.
 
 `SourceCollectionJobAttempts` contient une ligne par claim : clé `(JobId,
@@ -341,9 +343,28 @@ seule tentative configurent explicitement MaxAttempts=1. Reconstruction vierge,
 GetPendingMigrations vide et HasPendingModelChanges=false sont vérifiés avec les
 suites historiques complètes.
 
-## Hors Phase 7.3
+## Planification — Phase 7.4
 
-Pas de planification quotidienne, de génération automatique de jobs `scheduled`,
-de cron/scheduler, de n8n opérationnel, d’événements métier, de Blazor, IA, scoring
-ou email. La planification appartient à la tranche suivante. Pas de heartbeat,
-d’API de réparation des états ambigus ni de garantie d’unicité des effets externes.
+Le scheduler transforme uniquement une échéance persistée en job `scheduled`.
+Il ne résout aucun adaptateur et ne fait aucun appel réseau. Le Worker conserve
+la validation complète, la collecte, l'ingestion et la gestion des tentatives.
+`AvailableAt` représente la disponibilité d'un job/retry ; `NextCollectionAt`
+représente la prochaine occurrence quotidienne de la recherche. Ce sont deux
+horloges persistées indépendantes. Un échec Worker ne remet jamais l'échéance
+précédente à disposition du scheduler.
+
+La transaction du scheduler verrouille la SavedSearch avec `FOR NO KEY UPDATE SKIP LOCKED`,
+revérifie sa configuration et crée le job avec `ON CONFLICT ... DO NOTHING` ciblant
+l'index actif existant. Elle avance la date même si un job manuel ou planifié
+identique est déjà queued/running. Aucun jour manqué supplémentaire n'est accumulé.
+L'API manuelle conserve son 202/409 et tous les DTO/routes de jobs restent inchangés.
+
+Voir [Planification des collectes V1](source-collection-scheduling-v1.md) pour les
+contrats, la suspension, les migrations et la stratégie multi-instance.
+
+## Hors Phase 7.4
+
+Pas de cron libre, de fuseau horaire utilisateur, de calendrier ouvré, de n8n
+opérationnel, d'événements métier automatiques, de Blazor, IA, scoring ou email.
+Pas de heartbeat, d'API de réparation des états ambigus ni de garantie d'unicité
+des effets externes.

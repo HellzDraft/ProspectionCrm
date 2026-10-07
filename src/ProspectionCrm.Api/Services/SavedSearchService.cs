@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ProspectionCrm.Api.Services.Collection;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.SavedSearches;
 using ProspectionCrm.Api.Entities;
@@ -11,7 +12,7 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<IReadOnlyList<SavedSearchDto>> GetAllAsync(bool includeArchived = false, Guid? pipelineId = null, Guid? sourceConfigurationId = null, bool? enabled = null, CancellationToken cancellationToken = default)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var entities = await dbContext.SavedSearches.AsNoTracking()
+        var entities = await dbContext.SavedSearches.AsNoTracking().Include(x => x.CollectionSchedule)
             .Where(x => x.WorkspaceId == workspaceId && (includeArchived || x.ArchivedAt == null))
             .Where(x => (!pipelineId.HasValue || x.PipelineId == pipelineId.Value)
                 && (!sourceConfigurationId.HasValue || x.SourceConfigurationId == sourceConfigurationId.Value)
@@ -23,7 +24,7 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<SavedSearchDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var entity = await dbContext.SavedSearches.AsNoTracking()
+        var entity = await dbContext.SavedSearches.AsNoTracking().Include(x => x.CollectionSchedule)
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         return entity is null ? null : ToDto(entity);
     }
@@ -52,8 +53,10 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<(bool Found, string? Error)> UpdateAsync(Guid id, UpdateSavedSearchRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var entity = await dbContext.SavedSearches.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var entity = (await dbContext.SavedSearches.FromSqlInterpolated($"""
+            SELECT * FROM "SavedSearches" WHERE "Id" = {id} AND "WorkspaceId" = {workspaceId} FOR NO KEY UPDATE
+            """).AsNoTracking().ToListAsync(cancellationToken)).SingleOrDefault();
         if (entity is null)
             return (false, null);
         var error = await ValidateAsync(workspaceId, request.PipelineId, request.SourceConfigurationId, request.CriteriaJson, request.PipelineId != entity.PipelineId, request.SourceConfigurationId != entity.SourceConfigurationId, cancellationToken);
@@ -63,6 +66,12 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
         // tracked key; let PostgreSQL allow unreferenced changes and protect job history.
         try
         {
+            if (request.PipelineId != entity.PipelineId)
+                await dbContext.SourceCollectionSchedules.Where(x => x.SavedSearchId == id && x.WorkspaceId == workspaceId)
+                    .ExecuteDeleteAsync(cancellationToken);
+            else if (!request.Enabled)
+                await dbContext.SourceCollectionSchedules.Where(x => x.SavedSearchId == id && x.WorkspaceId == workspaceId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.Enabled, false).SetProperty(x => x.NextCollectionAt, (DateTimeOffset?)null), cancellationToken);
             var now = DateTimeOffset.UtcNow;
             var changed = await dbContext.SavedSearches.Where(x => x.Id == id && x.WorkspaceId == workspaceId)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.PipelineId, request.PipelineId!.Value)
@@ -70,6 +79,7 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
                     .SetProperty(x => x.Name, request.Name).SetProperty(x => x.SearchUrl, request.SearchUrl)
                     .SetProperty(x => x.CriteriaJson, request.CriteriaJson).SetProperty(x => x.Enabled, request.Enabled)
                     .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return (changed == 1, null);
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ForeignKeyViolation
@@ -82,14 +92,15 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<bool> ArchiveAsync(Guid id, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var entity = await dbContext.SavedSearches
-            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
-        if (entity is null)
-            return false;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
-        entity.ArchivedAt = now;
-        entity.UpdatedAt = now;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        // UPDATE obtains the same parent lock used by the scheduler/configuration endpoint.
+        var changed = await dbContext.SavedSearches.Where(x => x.Id == id && x.WorkspaceId == workspaceId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ArchivedAt, now).SetProperty(x => x.UpdatedAt, now), cancellationToken);
+        if (changed == 0) return false;
+        await dbContext.SourceCollectionSchedules.Where(x => x.SavedSearchId == id && x.WorkspaceId == workspaceId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Enabled, false).SetProperty(x => x.NextCollectionAt, (DateTimeOffset?)null), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -125,6 +136,9 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
 
     private static SavedSearchDto ToDto(SavedSearch entity) => new()
     {
+        Schedule = entity.CollectionSchedule is { } schedule
+            ? new(schedule.Enabled, SourceCollectionScheduleCalculator.Format(schedule.DailyUtcMinute), schedule.PipelineStageId, schedule.NextCollectionAt)
+            : new(false, null, null, null),
         Id = entity.Id,
         PipelineId = entity.PipelineId,
         SourceConfigurationId = entity.SourceConfigurationId,
