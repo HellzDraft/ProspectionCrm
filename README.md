@@ -481,3 +481,15 @@ n8n opérationnel, déclencheurs événementiels automatiques, Blazor, IA/scorin
 
 Voir [le contrat des jobs V1](docs/source-collection-jobs-v1.md). Les contrats
 synchrones `/collect`, `/ingestions`, historique et OpportunitySource restent inchangés.
+
+## Phase 8.1 — Paramètres et garde-fous d’automatisation
+
+Chaque Workspace possède une configuration persistante, désactivée par défaut en
+mode `manual`, avec limites 10/minute, 100/jour et 3 échecs consécutifs.
+`GET/PUT /api/automation-settings` expose les paramètres et les décisions de sécurité
+pour `general`, `email` (au maximum assist) et `application` (toujours manual).
+Le kill switch bloque toute autorisation lorsqu’il est désactivé.
+Aucune règle n’est encore exécutée : ni Worker d’automatisation, ni effet externe,
+ni application des quotas à des exécutions. La collecte Phase 7 reste inchangée.
+Voir [les paramètres d’automatisation V1](docs/automation-runtime-settings-v1.md)
+pour la matrice, l’API, la migration, le bootstrap et les limites de cette phase.

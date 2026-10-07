@@ -26,6 +26,11 @@ public class BootstrapService(ProspectionCrmDbContext dbContext) : IBootstrapSer
         if (users.Count == 1 && workspaces.Count == 1
             && workspaces[0].ArchivedAt is null && workspaces[0].OwnerUserId == users[0].Id)
         {
+            if (!await dbContext.AutomationRuntimeSettings.AnyAsync(x => x.WorkspaceId == workspaces[0].Id, cancellationToken))
+            {
+                dbContext.AutomationRuntimeSettings.Add(new() { WorkspaceId = workspaces[0].Id });
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
             // A compatible existing installation is never renamed or reset to the defaults.
             await transaction.CommitAsync(cancellationToken);
             return (ToDto(users[0], workspaces[0]), false, null);
@@ -47,6 +52,7 @@ public class BootstrapService(ProspectionCrmDbContext dbContext) : IBootstrapSer
             Name = BootstrapDefaults.WorkspaceName,
             TimeZoneId = BootstrapDefaults.TimeZoneId
         };
+        workspace.AutomationRuntimeSettings = new AutomationRuntimeSettings { WorkspaceId = workspace.Id };
         dbContext.UserAccounts.Add(owner);
         dbContext.Workspaces.Add(workspace);
         await dbContext.SaveChangesAsync(cancellationToken);

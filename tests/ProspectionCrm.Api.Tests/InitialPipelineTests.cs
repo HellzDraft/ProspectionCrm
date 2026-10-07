@@ -514,11 +514,17 @@ public sealed class InitialPipelineTests : IAsyncLifetime
         Assert.Equal(Enumerable.Range(0, 7), business.Stages.Select(x => x.SortOrder));
         Assert.All(business.Stages, stage => { Assert.Null(stage.Description); Assert.Null(stage.ArchivedAt); Assert.Equal(business.Id, stage.PipelineId); });
         Assert.Equal(result.Id, (await db.Workspaces.AsNoTracking().SingleAsync()).DefaultPipelineId);
-        // Every other modeled table remains empty, except the owner/workspace from bootstrap.
+        // Bootstrap also creates the safe automation configuration; no business execution is created.
+        var automation = await db.AutomationRuntimeSettings.AsNoTracking().SingleAsync();
+        Assert.Equal((await db.Workspaces.AsNoTracking().SingleAsync()).Id, automation.WorkspaceId);
+        Assert.False(automation.IsEnabled); Assert.Equal("manual", automation.OperatingModeCode);
+        Assert.Equal(10, automation.MaxExecutionsPerMinute); Assert.Equal(100, automation.MaxExecutionsPerDay);
+        Assert.Equal(3, automation.MaxConsecutiveFailures); Assert.Null(automation.UpdatedAt);
+        // Every remaining modeled table is empty.
         await using var connection = new NpgsqlConnection(postgres.GetConnectionString());
         await connection.OpenAsync();
         foreach (var table in db.Model.GetEntityTypes().Select(x => x.GetTableName()!).Distinct()
-            .Except(new[] { "UserAccounts", "Workspaces", "Pipelines", "PipelineStages" }))
+            .Except(new[] { "UserAccounts", "Workspaces", "Pipelines", "PipelineStages", "AutomationRuntimeSettings" }))
         {
             await using var command = new NpgsqlCommand($"SELECT count(*) FROM \"{table.Replace("\"", "\"\"")}\"", connection);
             Assert.Equal(0L, await command.ExecuteScalarAsync());

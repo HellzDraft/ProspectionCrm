@@ -4,6 +4,7 @@ using ProspectionCrm.Api.Services;
 using ProspectionCrm.Api.Services.Collection;
 using ProspectionCrm.Api.Storage;
 using Serilog;
+using ProspectionCrm.Api.Services.Automation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +25,8 @@ builder.Services.AddOptions<FileStorageOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
+builder.Services.AddSingleton<IAutomationSafetyPolicy, AutomationSafetyPolicy>();
+builder.Services.AddScoped<AutomationSettingsService>();
 builder.Services.AddScoped<IBootstrapService, BootstrapService>();
 builder.Services.AddScoped<IInitialPipelineService, InitialPipelineService>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();

@@ -7,6 +7,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     : DbContext(options)
 {
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
+    public DbSet<AutomationRuntimeSettings> AutomationRuntimeSettings => Set<AutomationRuntimeSettings>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Contact> Contacts => Set<Contact>();

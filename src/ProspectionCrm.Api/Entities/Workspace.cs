@@ -2,6 +2,7 @@ namespace ProspectionCrm.Api.Entities;
 
 public class Workspace
 {
+    public AutomationRuntimeSettings? AutomationRuntimeSettings { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid OwnerUserId { get; set; }
     public Guid? DefaultPipelineId { get; set; }
