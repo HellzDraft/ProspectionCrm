@@ -62,6 +62,12 @@ public sealed class SourceCollectionWorkerLifecycleTests
     }
 
     [Theory]
+    [InlineData("MaxAttempts", "0")]
+    [InlineData("MaxAttempts", "11")]
+    [InlineData("InitialRetryDelaySeconds", "0")]
+    [InlineData("InitialRetryDelaySeconds", "3601")]
+    [InlineData("MaxRetryDelaySeconds", "59")]
+    [InlineData("MaxRetryDelaySeconds", "86401")]
     [InlineData("IdleDelaySeconds", "0")]
     [InlineData("IdleDelaySeconds", "301")]
     [InlineData("LeaseDurationSeconds", "29")]

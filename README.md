@@ -92,8 +92,9 @@ Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20260929150147_Phase42PipelineLifecycleAndDefault`,
 `20261006091016_Phase621IngestionHistoryFoundation`,
 `20261006101923_Phase622PersistentSourceIdentities`,
-`20261007064337_Phase71PersistentCollectionJobs`, puis
-`20261007074738_Phase72CollectionWorkerLeases` :
+`20261007064337_Phase71PersistentCollectionJobs`,
+`20261007074738_Phase72CollectionWorkerLeases`, puis
+`20261007083908_Phase73CollectionRetries` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -147,7 +148,7 @@ toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 
 source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
 Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
 et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
-les contrats métier. La migration finale est `20261007074738_Phase72CollectionWorkerLeases`,
+les contrats métier. La migration finale est `20261007083908_Phase73CollectionRetries`,
 sans migration en attente ni divergence du modèle EF.
 
 Commande locale équivalente à la CI (Docker doit être démarré) :
@@ -391,7 +392,7 @@ relatives, avec streams et annulation. `LocalFileStorage` refuse les sorties de 
 et les écrasements ; la suppression est idempotente. Cette infrastructure n'est pas
 encore reliée à un endpoint ou formulaire d'upload/download.
 
-## File persistante et Worker de collecte — Phases 7.1 et 7.2
+## File persistante et Worker de collecte — Phases 7.1 à 7.3
 
 `POST /api/saved-searches/{savedSearchId}/collection-jobs` reçoit un
 `pipelineStageId` non vide et renvoie **202 Accepted**, le job `queued` et sa
@@ -422,16 +423,33 @@ $env:SourceCollectionWorker__IdleDelaySeconds = "5"
 $env:SourceCollectionWorker__LeaseDurationSeconds = "300"
 ```
 
-Les options sont validées au démarrage : attente de 1 à 300 secondes, lease de 30 à
-3600 secondes. Le Worker attend lorsque la file est vide ou lorsqu’un cycle échoue.
-La durée du lease borne coopérativement le traitement ; aucun heartbeat n’est ajouté.
-Un arrêt propre tente de conserver l’historique et de terminer le job. Après un crash,
-un job `running` dont le lease expire **n’est pas repris automatiquement** : il reste
-visible et bloque un nouvel enqueue identique jusqu’à une future réconciliation.
-L’expiration seule ne prouve pas que l’ancien processus a cessé ses effets métier.
+La Phase 7.3 ajoute `20261007083908_Phase73CollectionRetries`, avec une table légère
+conservant toutes les tentatives et leurs liens vers SourceExecution. Un échec
+explicitement transitoire remet le même job queued, avec une disponibilité future.
+Le job garde son origine manual et aucune exécution précédente n’est supprimée.
 
-Toujours absents : retry/backoff automatique, création automatique de jobs `retry`,
-planification quotidienne, scheduler et n8n opérationnel. Aucun écran Blazor ajouté.
+Options supplémentaires : MaxAttempts=3 (1–10), InitialRetryDelaySeconds=60 et
+MaxRetryDelaySeconds=900. Le backoff est `min(maximum, initial × 2^(tentative−1))` :
+60 puis 120 secondes par défaut, avant échec terminal à la troisième tentative.
+Il est persisté dans AvailableAt et survit au redémarrage. Un job en backoff reste
+annulable. Les erreurs de configuration, TLS/sécurité et les erreurs inconnues
+sont terminales ; les statuts HTTP distants transitoires sont classifiés explicitement.
+
+Avant chaque claim, le Worker réconcilie un petit batch de leases expirées. Il
+finalise les succès déjà committés et décide retry/échec d’après la cause durable.
+Une session active protégée par un verrou PostgreSQL n’est pas reprise. Si cette
+session est perdue, le token interdit à l’ancien propriétaire d’écrire ou de
+finaliser après récupération. Les cas ambigus terminent failed pour diagnostic.
+Une connexion dédiée par traitement conserve ce verrou, sans transaction pendant
+le réseau. Arrêter les workers avant l’upgrade ; ne pas mélanger 7.2 et 7.3 actives.
+
+Les options sont validées au démarrage. L’attente à vide reste de 1 à 300 secondes,
+le lease de 30 à 3600 secondes, sans heartbeat. Le délai initial de retry va de
+1 à 3600 secondes ; son plafond est au moins égal à l’initial et au plus 86400.
+Le Worker attend quand aucun travail ne progresse, sans timer de backoff en mémoire.
+
+Toujours absents : planification quotidienne, génération périodique de jobs
+scheduled, scheduler/cron, n8n opérationnel, Blazor, IA/scoring/email.
 
 Voir [le contrat des jobs V1](docs/source-collection-jobs-v1.md). Les contrats
 synchrones `/collect`, `/ingestions`, historique et OpportunitySource restent inchangés.

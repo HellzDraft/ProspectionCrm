@@ -43,6 +43,7 @@ public sealed class SourceCollectionWorkerTests : PersistentSourceIdentityFixtur
         new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .UseSetting("SourceCollectionWorker:Enabled", enabled.ToString())
+            .UseSetting("SourceCollectionWorker:MaxAttempts", "1")
             .UseSetting("SourceCollectionWorker:IdleDelaySeconds", "1")
             .UseSetting("SourceCollectionWorker:LeaseDurationSeconds", leaseSeconds.ToString())
             .ConfigureServices(services =>

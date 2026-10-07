@@ -1,4 +1,4 @@
-# File persistante et Worker de collecte — Phases 7.1 et 7.2
+# File persistante et Worker de collecte — Phases 7.1 à 7.3
 
 `SourceCollectionJob` est une commande persistante demandant une collecte future.
 `SourceExecution` est l'historique d'une tentative réellement commencée. L'enqueue
@@ -6,6 +6,7 @@ ne crée aucune exécution, observation, opportunité ou provenance, et ne réut
 pas `AutomationExecution`.
 
 La Phase 7.2 ajoute un Worker .NET optionnel, le claim atomique et les leases.
+La Phase 7.3 ajoute retry, backoff persistant et réconciliation.
 Le Worker est désactivé par défaut. Activé, il consomme les commandes persistées,
 y compris celles en attente avant son démarrage. Aucun endpoint `/run` ou
 `/process-next` n’est exposé. Les routes et les 14 champs du DTO Phase 7.1 restent
@@ -124,154 +125,225 @@ Ils couvrent concurrence déterministe, isolation, pagination, annulation, contr
 réelles, upgrade préservant le contenu des tables existantes, reconstruction vierge,
 Down/Up et absence de divergence EF. Les suites RSS et ingestion restent exécutées.
 
-## Claim PostgreSQL et possession
+## Job logique, tentatives et exécution
 
-`ISourceCollectionJobQueue` est distinct du service des routes HTTP. Le claim
-exécute une seule instruction : CTE sélectionnant au maximum une ligne `queued`
-dont `AvailableAt <= statement_timestamp()`, triée par `AvailableAt ASC`,
-`EnqueuedAt ASC`, `Id ASC`, avec `FOR UPDATE SKIP LOCKED`, puis `UPDATE ... FROM
-candidate ... RETURNING j.*`. La transition, l’incrément de `AttemptCount`,
-`StartedAt` et la création du lease sont atomiques. Le résultat est la ligne
-réellement modifiée, ou aucun travail. L’horloge PostgreSQL fait autorité.
+Le retry réutilise **le même job**. `AttemptCount` augmente uniquement lors du
+claim ; `EnqueuedAt` et `TriggerTypeCode` gardent leur origine. Un job manual reste
+manual, comme ses SourceExecution. Le numéro de tentative distingue les reprises ;
+aucun nouveau job `retry` n’est créé et aucune deuxième file n’existe.
 
-Une ligne verrouillée est ignorée ; l’ordre porte sur les candidats accessibles,
-pas sur un FIFO bloquant. Deux instances ne prennent pas le même job. La course
-avec `/cancel` produit soit un job annulé non claimé, soit un job running dont
-l’annulation retourne 409. Aucun verrou ni transaction du claim ne dure pendant
-le réseau. Une instance traite un job à la fois ; plusieurs instances peuvent
-consommer des jobs distincts.
+`SourceCollectionJobAttempts` contient une ligne par claim : clé `(JobId,
+AttemptNumber)`, WorkspaceId, dates, résultat, code contrôlé, statut HTTP distant
+éventuel et SourceExecutionId facultatif. Cette entité conserve aussi les claims
+échoués en prévalidation et ceux interrompus avant création d’une exécution.
+Elle ne recopie ni entrées métier, ni compteurs, ni snapshots, ni observations.
+La SourceExecution reste l’historique métier de la collecte. Les FK composées
+protègent le Workspace ; un index unique empêche de réutiliser une exécution.
 
-`LeaseToken` est un UUID non vide propre à la possession ; `LeaseExpiresAt` vaut
-`StartedAt + LeaseDurationSeconds`. La contrainte SQL impose un token et une
-expiration strictement après StartedAt pour running, et leur absence dans tous
-les autres états. Le rattachement d’historique et la finalisation exigent le même
-JobId, WorkspaceId, état running et token. Une possession étrangère ne peut pas
-finaliser le job.
-
-Le lease est fixe, sans renouvellement ni heartbeat. Le processeur déclenche une
-annulation coopérative selon la durée configurée, en déduisant le temps écoulé
-depuis le début du claim (horloge monotone). Ce budget conservatif évite de supposer
-les horloges applicative et PostgreSQL synchronisées ; les opérations doivent
-respecter le token. Le nettoyage historique et la
-finalisation peuvent dépasser l’échéance. Le détenteur du même token reste
-habilité à finaliser après expiration, puisqu’aucune reprise concurrente n’existe.
-Ce mécanisme n’est pas une interruption forcée ni une garantie « exactly once ».
-
-**Un running expiré n’est jamais sélectionné, réinitialisé ou réenfilé.** Après
-crash ou impossibilité de finaliser en base, il reste running avec son compteur,
-son token, son échéance et son éventuelle exécution. L’index actif continue de
-bloquer un enqueue identique. La réconciliation est laissée à une tranche future ;
-aucun endpoint de réparation ni script de remise en file n’est fourni ici.
-Diagnostic en lecture seule :
+Le pointeur `SourceCollectionJob.SourceExecutionId` conserve son contrat actuel :
+exécution courante/terminale lorsqu’elle existe, null en queued. En cas de retry,
+les anciens liens restent dans les tentatives et aucune exécution n’est supprimée.
+Les routes/DTO existants ne changent pas ; la relation complète est consultable en
+base, et les exécutions par les routes historiques existantes. Exemple interne :
 
 ```sql
-SELECT "Id", "WorkspaceId", "StartedAt", "LeaseExpiresAt", "SourceExecutionId"
-FROM "SourceCollectionJobs"
-WHERE "StatusCode" = 'running' AND "LeaseExpiresAt" <= statement_timestamp();
+SELECT "JobId", "AttemptNumber", "SourceExecutionId", "StatusCode", "StartedAt",
+       "FinishedAt", "ErrorCode", "UpstreamStatusCode"
+FROM "SourceCollectionJobAttempts"
+WHERE "JobId" = '<job-id>' ORDER BY "AttemptNumber";
 ```
 
-## Cycle du Worker et options
+## Claim, propriété et protection des écritures
 
-`SourceCollectionWorker` est un singleton `BackgroundService` qui reçoit une
-factory de scopes, les options et un logger, jamais un DbContext scoped. Chaque
-cycle crée et libère un scope pour `ISourceCollectionJobProcessor` et ses services.
-Après un job traité, il recherche le suivant ; si la file est vide ou qu’une erreur
-de cycle survient, il attend avec le token d’arrêt. Les exceptions inattendues sont
-journalisées et ne tuent pas la boucle.
+Le claim reste une instruction PostgreSQL atomique : candidat queued disponible,
+tri `AvailableAt ASC, EnqueuedAt ASC, Id ASC`, `FOR UPDATE SKIP LOCKED`, puis
+`UPDATE ... RETURNING` et insertion de la tentative dans des CTE. Un échec de
+l’insertion annule aussi le claim. L’horloge PostgreSQL fait autorité. Le claim
+exclut les jobs ayant déjà atteint MaxAttempts. Aucun incrément hors claim.
+
+Un contrôle advisory transactionnel évite de consommer une tentative si la session
+de l’ancien traitement détient encore le verrou du job. Dans ce cas, aucun claim
+n’est retourné et le prochain cycle peut réessayer. Les lignes verrouillées par
+une transaction restent ignorées grâce à SKIP LOCKED.
+
+Après claim, le processeur acquiert un **verrou advisory de session par JobId**,
+puis revérifie état, Workspace et token avant d’appeler l’orchestration. Ce verrou
+est conservé jusqu’à la fin du traitement/nettoyage. C’est une évolution nécessaire
+par rapport à 7.2 : une connexion PostgreSQL dédiée, non poolée, reste ouverte
+pendant le réseau, **sans transaction ouverte ni verrou de ligne pendant le fetch**.
+La fermeture de cette connexion libère le verrou. Les lectures EF demeurent
+matérialisées, sans transaction réseau. Une collision du hash 64 bits du verrou
+ne peut que retarder du travail, jamais autoriser un traitement concurrent.
+
+La session n’est pas une preuve absolue de vie : elle peut être perdue pendant que
+le processus poursuit une requête RSS. La protection finale reste le token :
+**avant toute écriture métier**, dans la transaction d’ingestion, le rattachement
+vérifie JobId, Workspace, état running et token ; il verrouille le job jusqu’au
+commit. L’exécution et les deux liens job/tentative sont persistés atomiquement,
+avant le savepoint métier. Un ancien propriétaire dont le token a été révoqué ne
+peut ni ingérer, ni rattacher une exécution, ni finaliser/requeue. Une transaction
+active ayant déjà verrouillé le job est ignorée par la réconciliation.
+
+En cas de perte de session, des lectures HTTP anciennes peuvent encore se terminer
+après reprise ; aucune garantie « exactly once » sur les appels réseau n’est
+revendiquée. Le transport actuel effectue des lectures RSS. Les écritures métier
+restent protégées par le token et la déduplication existante. Un futur adaptateur
+ayant des effets externes devra fournir sa propre idempotence.
+
+## Options et backoff persistant
 
 ```json
 "SourceCollectionWorker": {
   "Enabled": false,
   "IdleDelaySeconds": 5,
-  "LeaseDurationSeconds": 300
+  "LeaseDurationSeconds": 300,
+  "MaxAttempts": 3,
+  "InitialRetryDelaySeconds": 60,
+  "MaxRetryDelaySeconds": 900
 }
 ```
 
-Ces valeurs sont communes à tous les environnements. Les options typées sont
-validées au démarrage : IdleDelaySeconds entre 1 et 300, LeaseDurationSeconds entre
-30 et 3600. Les variables `SourceCollectionWorker__Enabled`,
-`SourceCollectionWorker__IdleDelaySeconds`, `SourceCollectionWorker__LeaseDurationSeconds`
-les surchargent au démarrage. Les tests peuvent conserver Enabled=false, remplacer
-les services par DI ou activer explicitement le vrai hosted service. Les migrations
-restent explicites, jamais exécutées par le Worker.
+Validation au démarrage : IdleDelaySeconds 1–300, LeaseDurationSeconds 30–3600,
+MaxAttempts 1–10, InitialRetryDelaySeconds 1–3600, MaxRetryDelaySeconds compris
+entre le délai initial et 86400. Les variables d’environnement utilisent le
+préfixe `SourceCollectionWorker__`. Les options sont lues au démarrage et doivent
+être cohérentes entre instances. Worker désactivé par défaut dans tous les environnements.
 
-Le token de traitement combine arrêt de l’application et délai du lease. En cas
-d’arrêt coopératif, l’historique conserve l’annulation lorsqu’une tentative a
-commencé ; le job devient failed avec `CollectionWorkerStopping`. Une échéance
-atteinte donne `CollectionLeaseExpired`. Le nettoyage utilise un scope neuf et un
-délai indépendant de dix secondes pour finaliser, après le nettoyage historique
-lui-même borné à dix secondes. Si PostgreSQL n’est plus accessible ou si le
-processus est tué, la lease persistante reste disponible pour diagnostic.
+Après l’échec de la tentative n, le délai vaut :
 
-## Revalidation, historique et transitions
+`min(MaxRetryDelaySeconds, InitialRetryDelaySeconds × 2^(n−1))`.
 
-`SourceCollectionService` conserve la façade HTTP synchrone et la sélection du
-Workspace courant. `ISourceCollectionOrchestrator` porte l’orchestration partagée
-avec le Worker. Le Worker utilise exclusivement le WorkspaceId du job, y compris
-si plusieurs workspaces sont actifs ; il ne consulte pas ICurrentWorkspaceProvider.
-Le resolver recharge Workspace, SavedSearch, SourceConfiguration, Pipeline,
-PipelineStage et adaptateur. Les modifications valides d’URL/critères sont prises
-en compte ; les ressources devenues invalides échouent avant le réseau, sans
-SourceExecution artificielle.
+Valeurs par défaut : 60 s après le premier échec, 120 s après le deuxième ; le
+troisième est terminal. Avec une limite supérieure, les délais suivants sont
+240, 480, puis 900 secondes au maximum. Pas de jitter ni de Retry-After externe.
+Le délai est calculé une fois lors de la décision, sous verrou, et la disponibilité
+est persistée : `AvailableAt = max(heure PostgreSQL, AvailableAt précédent) + délai`.
+Aucun timer de plusieurs minutes ni état de retry ne vit en mémoire.
 
-Après lecture, l’orchestration calcule le fingerprint existant. L’ingestion garde
-la revalidation sous verrou, la normalisation, les transactions/savepoints, la
-déduplication, les observations et les provenances de Phase 6. Un changement de
-configuration pendant le réseau est rejeté avant toute écriture métier.
+Un échec retryable requeue seulement si `AttemptCount < MaxAttempts`. Sinon le
+job termine failed en conservant la cause. Si MaxAttempts est abaissé pendant un
+backoff, un job désormais épuisé termine, lorsqu’il devient disponible, avec
+`CollectionAttemptsExhausted`, sans claim, réseau ni tentative supplémentaire.
+Dans ce cas, StartedAt et FinishedAt du job datent cette clôture administrative ;
+les dates de la dernière tentative restent dans son historique.
 
-L’ID d’exécution est alloué par tentative ; sa persistance et son rattachement au
-job se font **dans la même transaction**, avant le savepoint métier de l’ingestion.
-L’échec réseau utilise également une transaction pour l’historique et le lien.
-Ainsi une SourceExecution persistée reste liée même si le processus s’arrête entre
-son commit et la finalisation du job. Aucun contrat d’ingestion ni de lecture
-historique n’est changé. Le trigger de l’exécution reprend celui du job.
+## Classification centralisée des erreurs
+
+`SourceCollectionRetryPolicy` est l’unique politique de décision. Le statut HTTP
+exposé par l’API ne décide jamais seul d’un retry.
+
+| Cause | Politique |
+| --- | --- |
+| UpstreamTimeout, UpstreamTransportError, DnsResolutionFailed | Retry possible |
+| UpstreamHttpError avec statut distant 408, 429, 500, 502, 503 ou 504 | Retry possible |
+| CollectionWorkerStopping, CollectionLeaseExpired, CollectionCancelled, RequestCancelled | Interruption d’un traitement lié à un job : retry possible |
+| CollectionAbandoned | Aucun résultat durable après expiration : retry possible |
+| UpstreamHttpError avec tout autre statut ou statut absent | Terminal |
+| UpstreamTlsFailure, UnsafeFeedUrl, UnsafeRedirect, UnsafeResolvedAddress | Terminal |
+| InvalidRequest, InvalidBatch, WorkspaceUnavailable, ResourceNotFound, InactiveResource, WrongPipeline | Terminal |
+| UnsupportedSourceType, MissingFeedUrl, InvalidRssCriteria, InvalidFeed, NoUsableFeedEntries | Terminal |
+| TooManyRedirects, ResponseTooLarge, UnsupportedContentType | Terminal |
+| AmbiguousIdentity, MissingPersistentIdentity, ConcurrentIdentityChange, PersistenceFailure, CollectionConfigurationChanged | Terminal |
+| CollectionInternalError, CollectionWorkerError, CollectionRecoveryAmbiguous, CollectionAttemptsExhausted | Terminal |
+| Toute erreur inconnue ou cause absente sur une exécution échouée | Terminal, normalisée en CollectionWorkerError |
+
+Le statut HTTP distant est sauvegardé avec le lien historique dans la même
+transaction. Une ancienne exécution `UpstreamHttpError` sans statut distant est
+conservativement terminale lors de la récupération. Une erreur interne HTTP 500
+n’est donc jamais automatiquement retryable. Aucune stack trace, URL, SQL ou
+réponse brute n’est copiée dans les nouveaux ErrorCode ; les détails techniques
+restent dans les logs structurés. Les données historiques legacy restent intactes.
+
+## Finalisation et réconciliation
+
+`SourceCollectionJobFinalizer` partage la décision entre fin normale et recovery.
+Le propriétaire est contrôlé avec un verrou de ligne et son token. La tentative
+est terminée, puis le job finalisé ou remis en attente dans la même transaction.
+Un succès durable déjà commité prime sur une annulation observée ensuite.
 
 | Transition | Effets |
 | --- | --- |
-| queued → running | Claim, AttemptCount +1, StartedAt, token et expiration |
-| queued → cancelled | Route existante, FinishedAt, aucun traitement |
-| running → succeeded | Exécution persistée succeeded, lien conservé, FinishedAt, erreur et lease nulles |
-| running → failed | Code stable, FinishedAt, exécution liée lorsqu’elle existe, lease supprimée |
-| running expiré → running | Aucun traitement automatique ni incrément |
+| queued → running | AttemptCount +1, StartedAt, token/expiration, nouvelle tentative |
+| running → queued | Backoff persisté ; dates de traitement, pointeur d’exécution, erreur et lease remis à null ; tentative et exécution précédentes conservées |
+| running → succeeded | Exécution réussie liée, FinishedAt, erreur et lease nulles |
+| running → failed | Cause stable, FinishedAt, lease supprimée, lien d’exécution conservé s’il existe |
+| queued → cancelled | Route d’annulation existante, y compris pendant le backoff |
 
-La finalisation verrouille le job, vérifie token et Workspace et consulte son
-exécution persistée. Un succès déjà commité prime sur une annulation ou erreur
-observée juste après le commit. Les erreurs de validation/collecte conservent leur
-code (`InactiveResource`, `WorkspaceUnavailable`, `UpstreamTimeout`, etc.). Les
-erreurs inattendues de l’orchestration donnent `CollectionInternalError`, celles
-du processeur `CollectionWorkerError`. Les exceptions détaillées sont réservées aux
-logs structurés ; ErrorCode ne contient jamais l’exception brute. Une impossibilité
-de finaliser est journalisée et laisse running pour réconciliation, sans relance.
+`ISourceCollectionJobRecovery` s’exécute avant le claim dans chaque cycle du
+processeur. Il traite au maximum huit jobs queued devenus épuisés, puis examine
+au maximum huit running expirés, triés par expiration puis Id. La sélection et
+les transitions sont dans une transaction courte avec `FOR UPDATE SKIP LOCKED`.
+Chaque running nécessite aussi un `pg_try_advisory_xact_lock` sur la même clé que
+le propriétaire. Aucun réseau n’est effectué dans la réconciliation.
 
-## Migration Phase 7.2 et tests
+| État durable retrouvé | Décision |
+| --- | --- |
+| Lease non expiré | Aucun changement |
+| Session de traitement encore verrouillée | Aucun changement, même si le lease a expiré |
+| A — SourceExecution cohérente succeeded | Finaliser succeeded, sans nouveau traitement |
+| B — SourceExecution failed/cancelled | Classifier sa cause durable et le statut HTTP enregistré ; retry/backoff ou failed selon MaxAttempts |
+| C — Aucune SourceExecution, tentative cohérente | CollectionAbandoned, retry/backoff borné ou failed ; ancien token révoqué atomiquement |
+| D — Exécution running/partial, historique incohérent ou manquant, références incompatibles | Journaliser et terminer failed avec CollectionRecoveryAmbiguous ; conserver les données pour diagnostic, sans retry |
 
-`20261007074738_Phase72CollectionWorkerLeases` ajoute uniquement les deux colonnes
-nullables et `CK_SourceCollectionJobs_Lease`. Les migrations antérieures sont
-inchangées. Les lignes existantes conservent tous leurs champs Phase 7.1. Pour les
-éventuels running legacy, la migration génère un token et fixe l’échéance à
-StartedAt + une microseconde : normalement déjà expirée, sauf date de départ future
-anormale. Aucun job n’est exécuté ni créé. Down enlève seulement la contrainte et
-les deux colonnes ; un nouvel Up recrée les tokens legacy sans modifier les autres
-champs. Ne pas effectuer le downgrade pendant que des Workers tournent.
+La révocation du token, le résultat de tentative et le requeue sont atomiques.
+Deux réconciliateurs ne décident pas deux fois pour le même état running. Une
+session réellement bloquée reste protégée jusqu’à sa fermeture/détection de perte
+par PostgreSQL ; l’expiration seule n’autorise jamais à ignorer cette protection.
+Le batch est volontairement petit ; des sessions bloquées parmi les huit premiers
+expirés peuvent retarder la réconciliation des suivants.
 
-Les tests `SourceCollectionClaimTests`, `SourceCollectionWorkerTests` et
-`SourceCollectionWorkerMigrationTests` utilisent PostgreSQL 18 réel : claims
-concurrents, verrou ignoré, priorité, filtres d’éligibilité, token/Workspace,
-expiration sans reprise, course annulation, vrai hosted service, redémarrage,
-déduplication, revalidation, changement pendant réseau, arrêt et échec réseau suivi
-d’un succès. Ils vérifient les contraintes de lease, l’upgrade depuis Phase 7.1,
-la conservation des jobs, Down/Up, l’absence de migrations en attente et de divergence
-EF. `SourceCollectionWorkerLifecycleTests` vérifie les options invalides au
-démarrage, la désactivation, la libération des scopes et la survie de la boucle
-après une exception inattendue journalisée. Les tests existants couvrent aussi
-la chaîne vierge complète, `/collect`,
-`/ingestions`, l’historique, OpportunitySource et les reconstructions Phases 4 et 6.
+## Cycle, arrêt, redémarrage et annulation
 
-## Limites et prochaines tranches
+Le BackgroundService reste singleton avec un scope DI par cycle. Le processeur
+réconcilie, claim puis traite ; un cycle sans progression attend IdleDelaySeconds.
+Une erreur inattendue est journalisée et ne tue pas la boucle. Aucune route publique
+`/retry`, `/recover`, `/reconcile` ou `/process-next` n’est ajoutée.
 
-Pas de retry/backoff automatique, pas de création automatique de jobs `retry`, pas
-de planification quotidienne, pas de scheduler/cron, pas de n8n opérationnel, pas
-d’événements métier, pas d’interface Blazor, scoring, IA ou email. La récupération
-des leases expirées, la réconciliation après crash et toute politique de nouvelle
-tentative restent à concevoir en Phase 7.3 ou ultérieurement. Un échec ne redevient
-jamais queued dans cette version.
+Le lease est fixe, sans heartbeat. Un budget monotone déduit la durée du claim de
+LeaseDurationSeconds et annule coopérativement le traitement. Le nettoyage
+historique et la finalisation ont chacun un délai indépendant de dix secondes.
+Le même propriétaire peut finaliser après expiration si son token est toujours
+valide ; une perte de propriété empêche toute finalisation tardive.
+
+L’arrêt pendant une tentative produit CollectionWorkerStopping (ou
+CollectionLeaseExpired pour le budget dépassé) et peut remettre le job en backoff.
+En cas de crash avant finalisation, le prochain processus inspecte l’état durable.
+Un job déjà en backoff conserve exactement AvailableAt au redémarrage, sans
+recalcul ni nouvelle attente en mémoire.
+
+L’utilisateur ne peut annuler que queued. Si `/cancel` arrive avant le requeue,
+running retourne 409 ; après le requeue, l’annulation retourne 204. Une répétition
+sur cancelled reste idempotente. Aucun ancien token ne peut ressusciter cancelled.
+
+## Migration et validation Phase 7.3
+
+`20261007083908_Phase73CollectionRetries` ajoute la table des tentatives et la clé
+alternative `(WorkspaceId, Id)` du job. Les migrations 7.1 et 7.2 sont inchangées.
+Les jobs et SourceExecution existants restent inchangés. L’upgrade reconstitue
+uniquement la tentative connue d’un job ayant commencé : numéro AttemptCount,
+exécution liée et dates disponibles. Le numéro 0 identifie un numéro legacy inconnu ;
+les nouveaux claims commencent à 1. Aucun passé non connu n’est inventé. Les codes
+legacy recopiés sont contrôlés, sinon CollectionWorkerError ; les originaux restent
+dans les anciennes lignes.
+
+Down supprime les métadonnées de tentative et la clé ajoutée, jamais les jobs ou
+SourceExecution. Un nouvel Up ne peut reconstruire que le dernier lien connu du
+job : il ne restaure pas l’association des anciens retries perdue par le downgrade.
+Effectuer les migrations avec les workers arrêtés, sans mélanger versions 7.2 et
+7.3 actives. L’application n’applique toujours aucune migration au démarrage.
+
+Les suites retry, politique et migration couvrent PostgreSQL réel, backoff/restart,
+limite de tentatives, classification HTTP, prévalidation, tous les cas de recovery,
+réconciliateurs concurrents, ancien propriétaire, session encore active, perte de
+session et verrou avant reprise, annulation, upgrade préservant les données et
+Down/Up. Les tests de claim et Worker 7.2 restent exécutés ; les scénarios à une
+seule tentative configurent explicitement MaxAttempts=1. Reconstruction vierge,
+GetPendingMigrations vide et HasPendingModelChanges=false sont vérifiés avec les
+suites historiques complètes.
+
+## Hors Phase 7.3
+
+Pas de planification quotidienne, de génération automatique de jobs `scheduled`,
+de cron/scheduler, de n8n opérationnel, d’événements métier, de Blazor, IA, scoring
+ou email. La planification appartient à la tranche suivante. Pas de heartbeat,
+d’API de réparation des états ambigus ni de garantie d’unicité des effets externes.

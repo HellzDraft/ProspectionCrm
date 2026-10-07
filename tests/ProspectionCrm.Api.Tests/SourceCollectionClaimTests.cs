@@ -10,7 +10,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class SourceCollectionClaimTests : PersistentSourceIdentityFixture
 {
-    private static SourceCollectionJobQueue Queue(ProspectionCrmDbContext db) => new(db, Options.Create(new SourceCollectionWorkerOptions()));
+    private static SourceCollectionJobQueue Queue(ProspectionCrmDbContext db) => new(db, Options.Create(new SourceCollectionWorkerOptions { MaxAttempts = 1 }));
     private async Task<SourceCollectionJob> Add(Setup setup, DateTimeOffset? available = null)
     {
         await using var db = Db();

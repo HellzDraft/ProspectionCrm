@@ -10,14 +10,17 @@ public interface ISourceCollectionJobProcessor
 
 public sealed class SourceCollectionJobProcessor(ISourceCollectionJobQueue queue, ISourceCollectionOrchestrator orchestrator,
     IServiceScopeFactory scopes, IOptions<SourceCollectionWorkerOptions> options,
-    ILogger<SourceCollectionJobProcessor> logger) : ISourceCollectionJobProcessor
+    ILogger<SourceCollectionJobProcessor> logger, ISourceCollectionJobRecovery recovery, SourceCollectionJobGuard guard) : ISourceCollectionJobProcessor
 {
     public async Task<bool> ProcessNextAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        var recovered = await recovery.RecoverAsync(token);
         var claimStarted = Stopwatch.GetTimestamp();
         var job = await queue.ClaimAsync(token);
-        if (job is null) return false;
+        if (job is null) return recovered > 0;
+        await using var ownership = await guard.TryAcquireAsync(job, token);
+        if (ownership is null) return true;
         using var logScope = logger.BeginScope(new Dictionary<string, object>
         { ["JobId"] = job.Id, ["WorkspaceId"] = job.WorkspaceId, ["AttemptCount"] = job.AttemptCount });
         string? errorCode = null;

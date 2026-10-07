@@ -54,6 +54,10 @@ builder.Services.AddOptions<SourceCollectionWorkerOptions>()
     .Validate(options => options.IsValid(), "SourceCollectionWorker options are outside the supported bounds.")
     .ValidateOnStart();
 builder.Services.AddScoped<ISourceCollectionJobQueue, SourceCollectionJobQueue>();
+builder.Services.AddScoped<SourceCollectionRetryPolicy>();
+builder.Services.AddScoped<SourceCollectionJobFinalizer>();
+builder.Services.AddScoped<SourceCollectionJobGuard>();
+builder.Services.AddScoped<ISourceCollectionJobRecovery, SourceCollectionJobRecovery>();
 builder.Services.AddScoped<ISourceCollectionJobProcessor, SourceCollectionJobProcessor>();
 builder.Services.AddHostedService<SourceCollectionWorker>();
 builder.Services.AddScoped<ISourceCollectionContextResolver, SourceCollectionContextResolver>();

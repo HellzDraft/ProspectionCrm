@@ -20,8 +20,9 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Equal(before, await Snapshot());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.Equal(BeforeJobs, migrations[^3]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^2]);
-        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^1]);
+        Assert.Equal(BeforeJobs, migrations[^4]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^3]);
+        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^2]);
+        Assert.EndsWith("_Phase73CollectionRetries", migrations[^1]);
         Assert.Equal(migrations, await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         await AssertSchema();
@@ -48,7 +49,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var tables = new List<string>();
         await using (var command = new NpgsqlCommand("""
             SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-            AND tablename NOT IN ('__EFMigrationsHistory', 'SourceCollectionJobs') ORDER BY tablename
+            AND tablename NOT IN ('__EFMigrationsHistory', 'SourceCollectionJobs', 'SourceCollectionJobAttempts') ORDER BY tablename
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync())
             while (await reader.ReadAsync()) tables.Add(reader.GetString(0));

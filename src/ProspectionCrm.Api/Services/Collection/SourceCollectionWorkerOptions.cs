@@ -6,5 +6,10 @@ public sealed class SourceCollectionWorkerOptions
     public bool Enabled { get; set; }
     public int IdleDelaySeconds { get; set; } = 5;
     public int LeaseDurationSeconds { get; set; } = 300;
-    public bool IsValid() => IdleDelaySeconds is >= 1 and <= 300 && LeaseDurationSeconds is >= 30 and <= 3600;
+    public int MaxAttempts { get; set; } = 3;
+    public int InitialRetryDelaySeconds { get; set; } = 60;
+    public int MaxRetryDelaySeconds { get; set; } = 900;
+    public bool IsValid() => IdleDelaySeconds is >= 1 and <= 300 && LeaseDurationSeconds is >= 30 and <= 3600
+        && MaxAttempts is >= 1 and <= 10 && InitialRetryDelaySeconds is >= 1 and <= 3600
+        && MaxRetryDelaySeconds >= InitialRetryDelaySeconds && MaxRetryDelaySeconds <= 86400;
 }

@@ -78,10 +78,10 @@ public sealed class SourceCollectionOrchestrator(
 
         async Task<SourceCollectionResult> FailedAttemptAsync(SourceAdapterError error)
         {
-            var executionId = await PreserveAsync(error.Code, "failed");
+            var executionId = await PreserveAsync(error.Code, "failed", error.UpstreamStatusCode);
             return new(error.StatusCode, Error: error, ExecutionId: executionId);
         }
-        async Task<Guid?> PreserveAsync(string code, string status)
+        async Task<Guid?> PreserveAsync(string code, string status, int? upstreamStatus = null)
         {
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
@@ -100,7 +100,7 @@ public sealed class SourceCollectionOrchestrator(
                 await using var historyTransaction = await historyDb.Database.BeginTransactionAsync(cleanup.Token);
                 historyDb.SourceExecutions.Add(execution);
                 await historyDb.SaveChangesAsync(cleanup.Token);
-                if (job is not null) await job.AttachExecutionAsync(historyDb, workspaceId, cleanup.Token);
+                if (job is not null) await job.AttachExecutionAsync(historyDb, workspaceId, cleanup.Token, upstreamStatus, code);
                 await historyTransaction.CommitAsync(cleanup.Token);
                 logger.LogWarning("Collection ended for {WorkspaceId} {SavedSearchId} {SourceConfigurationId}: {Code}, {ExecutionId}",
                     workspaceId, search.Id, source.Id, code, execution.Id);

@@ -11,7 +11,8 @@ public interface ISourceCollectionJobQueue
     Task<bool> CompleteAsync(Guid jobId, Guid workspaceId, Guid leaseToken, string? errorCode, CancellationToken token);
 }
 
-public sealed class SourceCollectionJobQueue(ProspectionCrmDbContext db, IOptions<SourceCollectionWorkerOptions> options)
+public sealed class SourceCollectionJobQueue(ProspectionCrmDbContext db, IOptions<SourceCollectionWorkerOptions> options,
+    SourceCollectionJobFinalizer? finalizer = null)
     : ISourceCollectionJobQueue
 {
     public async Task<SourceCollectionJob?> ClaimAsync(CancellationToken token)
@@ -19,20 +20,28 @@ public sealed class SourceCollectionJobQueue(ProspectionCrmDbContext db, IOption
         var leaseToken = Guid.NewGuid();
         var duration = TimeSpan.FromSeconds(options.Value.LeaseDurationSeconds);
         // One PostgreSQL statement/transaction. RETURNING is the actual updated row, not the candidate.
-        // PostgreSQL's clock is authoritative. No transaction or connection spans the source fetch.
+        // PostgreSQL's clock is authoritative. No claim transaction or EF connection spans the fetch.
         var rows = await db.SourceCollectionJobs.FromSqlInterpolated($"""
             WITH candidate AS (
                 SELECT "Id" FROM "SourceCollectionJobs"
-                WHERE "StatusCode" = 'queued' AND "AvailableAt" <= statement_timestamp()
+                WHERE "StatusCode" = 'queued' AND "AvailableAt" <= statement_timestamp() AND "AttemptCount" < {options.Value.MaxAttempts}
                 ORDER BY "AvailableAt", "EnqueuedAt", "Id"
                 LIMIT 1 FOR UPDATE SKIP LOCKED
             )
-            UPDATE "SourceCollectionJobs" j
+            , owned AS (
+                SELECT "Id" FROM candidate
+                WHERE pg_try_advisory_xact_lock(hashtextextended({SourceCollectionJobGuard.Prefix} || "Id"::text, 0))
+            ), claimed AS (UPDATE "SourceCollectionJobs" j
             SET "StatusCode" = 'running', "StartedAt" = statement_timestamp(),
                 "AttemptCount" = j."AttemptCount" + 1,
                 "LeaseToken" = {leaseToken}, "LeaseExpiresAt" = statement_timestamp() + {duration}
-            FROM candidate c WHERE j."Id" = c."Id"
-            RETURNING j.*
+            FROM owned c WHERE j."Id" = c."Id"
+            RETURNING j.*), attempts AS (
+                INSERT INTO "SourceCollectionJobAttempts" ("JobId", "WorkspaceId", "AttemptNumber", "StartedAt", "StatusCode")
+                SELECT "Id", "WorkspaceId", "AttemptCount", "StartedAt", 'running' FROM claimed
+                RETURNING "JobId"
+            )
+            SELECT claimed.* FROM claimed JOIN attempts ON attempts."JobId" = claimed."Id"
             """).AsNoTracking().ToListAsync(token);
         return rows.SingleOrDefault();
     }
@@ -46,22 +55,10 @@ public sealed class SourceCollectionJobQueue(ProspectionCrmDbContext db, IOption
             """).AsNoTracking().ToListAsync(token);
         var job = rows.SingleOrDefault();
         if (job is null) return false;
-        var execution = job.SourceExecutionId is null ? null : await db.SourceExecutions.AsNoTracking()
-            .SingleAsync(x => x.Id == job.SourceExecutionId && x.WorkspaceId == workspaceId, token);
-        // A committed success wins over cancellation/connection errors observed just after commit.
-        var succeeded = execution?.StatusCode == "succeeded";
-        var status = succeeded ? "succeeded" : "failed";
-        var code = succeeded ? null : errorCode ?? "CollectionWorkerError";
-        // Only the same owner may finish, including cooperative cleanup after expiration.
-        // Expired running jobs are NEVER automatically reclaimed in Phase 7.2.
-        var count = await db.Database.ExecuteSqlInterpolatedAsync($"""
-            UPDATE "SourceCollectionJobs" SET "StatusCode" = {status},
-                "FinishedAt" = GREATEST(statement_timestamp(), "StartedAt"), "ErrorCode" = {code},
-                "LeaseToken" = NULL, "LeaseExpiresAt" = NULL
-            WHERE "Id" = {jobId} AND "WorkspaceId" = {workspaceId}
-                AND "StatusCode" = 'running' AND "LeaseToken" = {leaseToken}
-            """, token);
+        var completion = finalizer ?? new SourceCollectionJobFinalizer(db, new SourceCollectionRetryPolicy(options),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SourceCollectionJobFinalizer>.Instance);
+        await completion.FinishAsync(job, errorCode, recovering: false, token);
         await transaction.CommitAsync(token);
-        return count == 1;
+        return true;
     }
 }
