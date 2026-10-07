@@ -10,7 +10,9 @@ public sealed class SourceCollectionScheduleService(ProspectionCrmDbContext db, 
 {
     public async Task<(bool Found, string? Error)> UpdateAsync(Guid id, UpdateCollectionScheduleRequest request, CancellationToken token)
     {
-        var workspace = await workspaceProvider.GetCurrentWorkspaceIdAsync(token);
+        Guid workspace;
+        try { workspace = await workspaceProvider.GetCurrentWorkspaceIdAsync(token); }
+        catch (InvalidOperationException) { return (true, "Exactly one active workspace is required to configure a schedule."); }
         await using var tx = await db.Database.BeginTransactionAsync(token);
         // All schedule mutations and scheduling decisions serialize on the parent search.
         var search = (await db.SavedSearches.FromSqlInterpolated($"""

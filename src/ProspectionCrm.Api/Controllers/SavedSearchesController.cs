@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using ProspectionCrm.Api.Dtos.SavedSearches;
 using ProspectionCrm.Api.Services;
 using ProspectionCrm.Api.Services.Collection;
@@ -10,6 +11,9 @@ namespace ProspectionCrm.Api.Controllers;
 public class SavedSearchesController(ISavedSearchService service) : ControllerBase
 {
     [HttpPut("{id:guid}/schedule")]
+    [CollectionScheduleValidation]
+    [CollectionApiException("CollectionScheduleInternalError")]
+    [ProducesResponseType<ProblemDetails>(500)]
     public async Task<IActionResult> UpdateSchedule(Guid id, UpdateCollectionScheduleRequest request,
         [FromServices] SourceCollectionScheduleService schedules, CancellationToken cancellationToken)
     {
@@ -59,5 +63,17 @@ public class SavedSearchesController(ISavedSearchService service) : ControllerBa
         if (!found)
             return NotFound();
         return error is null ? NoContent() : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+    }
+}
+
+public sealed class CollectionScheduleValidationAttribute : ActionFilterAttribute
+{
+    public CollectionScheduleValidationAttribute() => Order = -3000;
+    public override void OnActionExecuting(ActionExecutingContext context)
+    {
+        if (context.ModelState.IsValid) return;
+        var problem = new ProblemDetails { Status = 400, Title = "Collection schedule request failed", Detail = "The request is invalid." };
+        problem.Extensions["code"] = "InvalidRequest";
+        context.Result = new BadRequestObjectResult(problem);
     }
 }

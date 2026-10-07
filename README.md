@@ -469,6 +469,13 @@ les jobs. Migration `20261007094120_Phase74CollectionScheduling`, sans configura
 ni job rétroactif. Voir [Planification des collectes V1](docs/source-collection-scheduling-v1.md)
 pour l'API, les validations, la concurrence, les options et les limites.
 
+`Phase7ReconstructionTests` reconstruit sur PostgreSQL vierge le parcours HTTP
+bootstrap → pipelines → source RSS → SavedSearch → planning, puis scheduler → job
+scheduled → Worker → ingestion → Opportunity/OpportunitySource → historique →
+succeeded. Le transport RSS est déterministe ; les vrais services, le parser et
+les migrations sont utilisés. `Phase7ApiErrorTests` vérifie aussi les réponses
+d'erreur sans diagnostics sensibles, y compris en Development.
+
 Toujours absents : cron libre, fuseaux horaires utilisateur, calendrier ouvré,
 n8n opérationnel, déclencheurs événementiels automatiques, Blazor, IA/scoring/email.
 

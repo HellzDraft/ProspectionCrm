@@ -108,6 +108,12 @@ Les erreurs CRM contrôlées reprennent les codes de `/collect` : 404
 `ResourceNotFound`, 409 `WorkspaceUnavailable`, `InactiveResource`, `WrongPipeline`,
 `UnsupportedSourceType`, `MissingFeedUrl`, `InvalidRssCriteria`, `UnsafeFeedUrl`.
 
+Une erreur technique inattendue des routes de jobs retourne un ProblemDetails 500
+`CollectionJobInternalError`. Les diagnostics restent dans les logs Serilog,
+y compris en Development : aucun SQL, message d'exception ou stack trace dans
+la réponse. Les erreurs de validation et conflits contrôlés ci-dessus conservent
+leurs statuts et codes.
+
 ## Migration et validation
 
 Migration `20261007064337_Phase71PersistentCollectionJobs`, après

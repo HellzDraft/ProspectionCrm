@@ -8,9 +8,11 @@ namespace ProspectionCrm.Api.Controllers;
 [ApiController]
 [Route("api/source-collection-jobs")]
 [CollectionJobValidation]
+[CollectionApiException("CollectionJobInternalError")]
 [ProducesResponseType<ProblemDetails>(400)]
 [ProducesResponseType<ProblemDetails>(404)]
 [ProducesResponseType<ProblemDetails>(409)]
+[ProducesResponseType<ProblemDetails>(500)]
 public sealed class SourceCollectionJobsController(ISourceCollectionJobService service) : ControllerBase
 {
     [HttpPost("/api/saved-searches/{savedSearchId:guid}/collection-jobs")]

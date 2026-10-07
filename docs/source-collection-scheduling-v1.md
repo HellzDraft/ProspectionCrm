@@ -32,6 +32,13 @@ actifs/non archivés ; la source et la recherche doivent aussi être Enabled.
 La source doit appartenir au même Workspace. L'adaptateur, ses paramètres et
 l'URL sont validés seulement au traitement par le Worker.
 
+Une sélection de Workspace indisponible (aucun ou plusieurs actifs) retourne
+également 400 avec un message contrôlé. Les erreurs de binding/validation du
+body retournent `InvalidRequest`, sans recopier les propriétés ou valeurs rejetées.
+Une erreur technique inattendue retourne un ProblemDetails 500
+`CollectionScheduleInternalError`. Les détails SQL et stack traces restent dans
+les logs Serilog, même en Development.
+
 Les anciens POST/PUT SavedSearch restent inchangés. Leurs DTO de lecture,
 y compris la liste, ajoutent :
 
