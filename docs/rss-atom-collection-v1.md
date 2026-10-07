@@ -215,8 +215,10 @@ resolver recevant explicitement le WorkspaceId. `/collect` conserve son traiteme
 synchrone, ses DTO, ses statuts et son historique.
 
 La file ajoute la migration `20261007064337_Phase71PersistentCollectionJobs`.
-Elle permet lecture, pagination et annulation avant traitement, mais **aucun
-Worker ni traitement automatique**. Aucun snapshot ou fingerprint n'est copié
-dans le job ; le futur Worker devra relire et revalider la configuration courante.
+La Phase 7.1 permettait lecture, pagination et annulation avant traitement, sans
+Worker ni traitement automatique. Aucun snapshot ou fingerprint n'est copié
+dans le job. Le Worker optionnel de Phase 7.2 relit et revalide la configuration
+courante, puis réutilise cette même orchestration. Voir le contrat des jobs pour
+le claim, les leases et les limites de reprise après crash.
 Voir [SourceCollectionJob V1](source-collection-jobs-v1.md) pour le contrat complet
 et les limites de cette tranche.

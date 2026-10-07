@@ -36,6 +36,12 @@ public sealed class SourceCollectionJobConfiguration : IEntityTypeConfiguration<
             .IsUnique().HasDatabaseName(ActiveIndex).HasFilter("\"StatusCode\" IN ('queued', 'running')");
         builder.ToTable("SourceCollectionJobs", table =>
         {
+            table.HasCheckConstraint("CK_SourceCollectionJobs_Lease", """
+                ("StatusCode" = 'running' AND "LeaseToken" IS NOT NULL
+                    AND "LeaseToken" <> '00000000-0000-0000-0000-000000000000'::uuid
+                    AND "LeaseExpiresAt" IS NOT NULL AND "LeaseExpiresAt" > "StartedAt")
+                OR ("StatusCode" <> 'running' AND "LeaseToken" IS NULL AND "LeaseExpiresAt" IS NULL)
+                """);
             table.HasCheckConstraint("CK_SourceCollectionJobs_TriggerTypeCode", "\"TriggerTypeCode\" IN ('manual', 'scheduled', 'event', 'retry')");
             table.HasCheckConstraint("CK_SourceCollectionJobs_StatusCode", "\"StatusCode\" IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')");
             table.HasCheckConstraint("CK_SourceCollectionJobs_AttemptCount", "\"AttemptCount\" >= 0");

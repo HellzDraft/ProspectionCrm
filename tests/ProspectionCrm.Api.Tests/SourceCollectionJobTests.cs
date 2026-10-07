@@ -237,6 +237,7 @@ public sealed class SourceCollectionJobTests : PersistentSourceIdentityFixture
         var setup = await RssSetup(); using var factory = Factory(); using var client = Client(factory); var job = await Post(client, setup);
         await using var db = Db(); var row = await db.SourceCollectionJobs.SingleAsync();
         row.StatusCode = status; row.StartedAt = row.AvailableAt; row.FinishedAt = status == "running" ? null : DateTimeOffset.UtcNow;
+        if (status == "running") { row.LeaseToken = Guid.NewGuid(); row.LeaseExpiresAt = row.StartedAt.Value.AddMinutes(5); }
         row.ErrorCode = status == "failed" ? "UpstreamTimeout" : null;
         if (status == "succeeded")
         {

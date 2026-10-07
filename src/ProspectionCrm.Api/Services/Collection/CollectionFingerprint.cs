@@ -5,7 +5,8 @@ using ProspectionCrm.Api.Entities;
 
 namespace ProspectionCrm.Api.Services.Collection;
 
-public sealed record CollectionPrecondition(Guid WorkspaceId, string Fingerprint, DateTimeOffset StartedAt);
+public sealed record CollectionPrecondition(Guid WorkspaceId, string Fingerprint, DateTimeOffset StartedAt,
+    CollectionJobAttempt? Job = null);
 
 public static class CollectionFingerprint
 {

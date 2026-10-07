@@ -31,7 +31,8 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         var invalid = Validate(request);
         if (invalid is not null) return new(IngestionStatus.InvalidRequest, Error: invalid);
         Guid workspaceId;
-        try { workspaceId = await workspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken); }
+        try { workspaceId = precondition?.Job is not null ? precondition.WorkspaceId
+            : await workspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken); }
         catch (InvalidOperationException)
         {
             return Reject(IngestionStatus.Conflict, IngestionErrorCode.WorkspaceUnavailable, "Exactly one active workspace is required.");
@@ -76,8 +77,9 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
 
         var execution = new SourceExecution
         {
+            Id = precondition?.Job?.ExecutionId ?? Guid.NewGuid(),
             WorkspaceId = workspaceId, SourceConfigurationId = configuration.Id, SavedSearchId = search.Id,
-            TriggerTypeCode = "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
+            TriggerTypeCode = precondition?.Job?.TriggerTypeCode ?? "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
             StartedAt = precondition?.StartedAt ?? DateTimeOffset.UtcNow,
             HistoryVersion = 1, ContractVersion = 1, NormalizationVersion = 1,
             TargetPipelineId = pipeline.Id, TargetPipelineStageId = stage.Id,
@@ -87,6 +89,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         execution.Items = history.ToList();
         dbContext.SourceExecutions.Add(execution);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (precondition?.Job is { } job) await job.AttachExecutionAsync(dbContext, workspaceId, cancellationToken);
         // Keep the immutable inputs on rollback; business writes and provisional decisions follow.
         await transaction.CreateSavepointAsync(BusinessSavepoint, cancellationToken);
         using var scope = logger.BeginScope(new Dictionary<string, object>
@@ -242,7 +245,8 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         }
         catch (Exception exception)
         {
-            if (precondition is null) logger.LogError(exception, "Manual ingestion failed; rolling back business writes");
+            if (precondition is null || precondition.Job is not null)
+                logger.LogError(exception, "Ingestion failed; rolling back business writes");
             else logger.LogError("Collection ingestion failed with {Code}; rolling back business writes", PersistenceFailure);
             await FinishFailedAsync(transaction, execution, "failed", PersistenceFailure, currentIndex, provisional);
             return new(IngestionStatus.Failed, Error: new(IngestionErrorCode.PersistenceFailure,

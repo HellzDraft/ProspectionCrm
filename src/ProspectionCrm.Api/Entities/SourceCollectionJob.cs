@@ -16,6 +16,8 @@ public class SourceCollectionJob
     public int AttemptCount { get; set; }
     public Guid? SourceExecutionId { get; set; }
     public string? ErrorCode { get; set; }
+    public Guid? LeaseToken { get; set; }
+    public DateTimeOffset? LeaseExpiresAt { get; set; }
 
     public Workspace Workspace { get; set; } = null!;
     public SavedSearch SavedSearch { get; set; } = null!;

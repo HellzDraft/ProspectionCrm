@@ -48,6 +48,14 @@ builder.Services.AddSingleton<RssAtomFeedParser>();
 builder.Services.AddSingleton<ISourceAdapter, RssAtomSourceAdapter>();
 builder.Services.AddSingleton<SourceAdapterRegistry>();
 builder.Services.AddScoped<ISourceCollectionService, SourceCollectionService>();
+builder.Services.AddScoped<ISourceCollectionOrchestrator, SourceCollectionOrchestrator>();
+builder.Services.AddOptions<SourceCollectionWorkerOptions>()
+    .Bind(builder.Configuration.GetRequiredSection(SourceCollectionWorkerOptions.SectionName))
+    .Validate(options => options.IsValid(), "SourceCollectionWorker options are outside the supported bounds.")
+    .ValidateOnStart();
+builder.Services.AddScoped<ISourceCollectionJobQueue, SourceCollectionJobQueue>();
+builder.Services.AddScoped<ISourceCollectionJobProcessor, SourceCollectionJobProcessor>();
+builder.Services.AddHostedService<SourceCollectionWorker>();
 builder.Services.AddScoped<ISourceCollectionContextResolver, SourceCollectionContextResolver>();
 builder.Services.AddScoped<ISourceCollectionJobService, SourceCollectionJobService>();
 builder.Services.AddScoped<IIngestionHistoryReadService, IngestionHistoryReadService>();

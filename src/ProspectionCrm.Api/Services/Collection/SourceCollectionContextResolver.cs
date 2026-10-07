@@ -17,6 +17,8 @@ public sealed class SourceCollectionContextResolver(ProspectionCrmDbContext db, 
 {
     public async Task<SourceCollectionContextResult> ResolveAsync(Guid workspaceId, Guid savedSearchId, Guid pipelineStageId, CancellationToken token)
     {
+        if (!await db.Workspaces.AsNoTracking().AnyAsync(x => x.Id == workspaceId && x.ArchivedAt == null, token))
+            return Fail("WorkspaceUnavailable", 409);
         var search = await db.SavedSearches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == savedSearchId && x.WorkspaceId == workspaceId, token);
         if (search is null) return Fail("ResourceNotFound", 404);
         var source = await db.SourceConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == search.SourceConfigurationId && x.WorkspaceId == workspaceId, token);

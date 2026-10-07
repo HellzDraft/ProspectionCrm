@@ -91,8 +91,9 @@ Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20260925101154_InitialCrmSchema`,
 `20260929150147_Phase42PipelineLifecycleAndDefault`,
 `20261006091016_Phase621IngestionHistoryFoundation`,
-`20261006101923_Phase622PersistentSourceIdentities`, puis
-`20261007064337_Phase71PersistentCollectionJobs` :
+`20261006101923_Phase622PersistentSourceIdentities`,
+`20261007064337_Phase71PersistentCollectionJobs`, puis
+`20261007074738_Phase72CollectionWorkerLeases` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -121,7 +122,7 @@ annulation et protection des chemins. Ils utilisent des dossiers temporaires net
 sans PostgreSQL, Docker, n8n ni accès au véritable `data/files`.
 Ils ne constituent pas une couverture complète du métier.
 
-Les tests métier des Phases 4, 5 et 6 nécessitent **Docker démarré avec des conteneurs Linux**.
+Les tests métier des Phases 4 à 7 nécessitent **Docker démarré avec des conteneurs Linux**.
 Testcontainers crée un PostgreSQL 18 jetable par test, sur un port hôte aléatoire,
 et y applique les migrations réelles. Le premier lancement peut télécharger
 `postgres:18` et l'image de nettoyage Testcontainers. Aucun conteneur, volume,
@@ -146,7 +147,7 @@ toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 
 source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
 Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
 et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
-les contrats métier. La migration finale est `20261007064337_Phase71PersistentCollectionJobs`,
+les contrats métier. La migration finale est `20261007074738_Phase72CollectionWorkerLeases`,
 sans migration en attente ni divergence du modèle EF.
 
 Commande locale équivalente à la CI (Docker doit être démarré) :
@@ -349,7 +350,8 @@ déduplication existantes. La réponse 201 contient `ingestion` et `summary`.
 authentification réseau n'est supportée. Le transport borne délai, taille et redirects,
 et protège les connexions DNS contre SSRF/rebinding. Les échecs après tentative sont
 historisés sans item ; les changements de configuration pendant le réseau sont rejetés
-sous verrou avant ingestion. Aucun Worker, planification ou migration n'est ajouté.
+sous verrou avant ingestion. La Phase 6.3 n’ajoutait pas de Worker ; la Phase 7.2
+réutilise cette orchestration pour les jobs asynchrones.
 
 Voir [le contrat RSS/Atom V1](docs/rss-atom-collection-v1.md) pour le mapping,
 les protections, les erreurs, les tests et les limites.
@@ -389,7 +391,7 @@ relatives, avec streams et annulation. `LocalFileStorage` refuse les sorties de 
 et les écrasements ; la suppression est idempotente. Cette infrastructure n'est pas
 encore reliée à un endpoint ou formulaire d'upload/download.
 
-## File persistante des collectes — Phase 7.1
+## File persistante et Worker de collecte — Phases 7.1 et 7.2
 
 `POST /api/saved-searches/{savedSearchId}/collection-jobs` reçoit un
 `pipelineStageId` non vide et renvoie **202 Accepted**, le job `queued` et sa
@@ -404,10 +406,32 @@ lecture et pagination filtrée dans le Workspace courant. `POST
 une répétition est idempotente. Les jobs ne sont jamais supprimés par cette API.
 
 La migration `20261007064337_Phase71PersistentCollectionJobs` crée une file vide.
-Le job est une commande, sans snapshot ni fingerprint ; la configuration devra
-être relue et revalidée lors du futur traitement. **Aucun Worker ni traitement
-automatique dans 7.1** : un job queued reste queued. Claim/lease, Worker,
-retry/backoff et planification sont réservés aux tranches suivantes.
+La migration `20261007074738_Phase72CollectionWorkerLeases` ajoute le token et
+l’expiration du lease. Le `BackgroundService` prend un job disponible par claim
+PostgreSQL atomique (`FOR UPDATE SKIP LOCKED`, ordre `AvailableAt`, `EnqueuedAt`,
+`Id` croissants). Chaque traitement utilise son propre scope DI, relit et revalide
+la configuration du Workspace enregistré, puis appelle l’orchestration RSS/ingestion
+existante. Le job conserve son lien vers l’exécution et termine en `succeeded` ou `failed`.
+
+Le Worker est **désactivé par défaut**, y compris en Development. Pour l’activer
+après application explicite des migrations, définir avant de démarrer l’API :
+
+```powershell
+$env:SourceCollectionWorker__Enabled = "true"
+$env:SourceCollectionWorker__IdleDelaySeconds = "5"
+$env:SourceCollectionWorker__LeaseDurationSeconds = "300"
+```
+
+Les options sont validées au démarrage : attente de 1 à 300 secondes, lease de 30 à
+3600 secondes. Le Worker attend lorsque la file est vide ou lorsqu’un cycle échoue.
+La durée du lease borne coopérativement le traitement ; aucun heartbeat n’est ajouté.
+Un arrêt propre tente de conserver l’historique et de terminer le job. Après un crash,
+un job `running` dont le lease expire **n’est pas repris automatiquement** : il reste
+visible et bloque un nouvel enqueue identique jusqu’à une future réconciliation.
+L’expiration seule ne prouve pas que l’ancien processus a cessé ses effets métier.
+
+Toujours absents : retry/backoff automatique, création automatique de jobs `retry`,
+planification quotidienne, scheduler et n8n opérationnel. Aucun écran Blazor ajouté.
 
 Voir [le contrat des jobs V1](docs/source-collection-jobs-v1.md). Les contrats
 synchrones `/collect`, `/ingestions`, historique et OpportunitySource restent inchangés.

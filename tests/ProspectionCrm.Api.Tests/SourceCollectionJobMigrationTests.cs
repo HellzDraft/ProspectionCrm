@@ -20,7 +20,8 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Equal(before, await Snapshot());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.Equal(BeforeJobs, migrations[^2]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^1]);
+        Assert.Equal(BeforeJobs, migrations[^3]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^2]);
+        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^1]);
         Assert.Equal(migrations, await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         await AssertSchema();
@@ -79,7 +80,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var checks = new List<string>(); var foreignKeys = new List<string>();
         await using (var reader = await constraints.ExecuteReaderAsync()) while (await reader.ReadAsync())
         { if (reader.GetString(0) == "c") checks.Add(reader.GetString(1)); if (reader.GetString(0) == "f") foreignKeys.Add(reader.GetString(1)); }
-        Assert.Equal(7, checks.Count); Assert.Equal(5, foreignKeys.Count);
+        Assert.Equal(8, checks.Count); Assert.Equal(5, foreignKeys.Count);
         Assert.All(foreignKeys, x => Assert.Contains("ON DELETE RESTRICT", x));
         Assert.Contains(foreignKeys, x => x.Contains("REFERENCES \"SavedSearches\"(\"WorkspaceId\", \"Id\", \"PipelineId\")"));
         Assert.Contains(foreignKeys, x => x.Contains("REFERENCES \"PipelineStages\"(\"PipelineId\", \"Id\")"));
@@ -153,6 +154,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
                 }
                 break;
         }
+        if (job.StatusCode == "running") { job.LeaseToken = Guid.NewGuid(); job.LeaseExpiresAt = job.AvailableAt.AddMinutes(5); }
         db.SourceCollectionJobs.Add(job);
         var error = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         Assert.Equal(state, Assert.IsType<PostgresException>(error.InnerException).SqlState);
@@ -180,6 +182,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var pg = Assert.IsType<PostgresException>(error.InnerException); Assert.Equal("23505", pg.SqlState);
         Assert.Equal("IX_SourceCollectionJobs_SourceExecutionId", pg.ConstraintName);
         db.ChangeTracker.Clear(); var running = Job(setup); running.StatusCode = "running"; running.StartedAt = running.AvailableAt;
+        running.LeaseToken = Guid.NewGuid(); running.LeaseExpiresAt = running.AvailableAt.AddMinutes(5);
         db.Add(running); await db.SaveChangesAsync(); db.Add(Job(setup));
         error = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync()); Assert.Equal("23505", Assert.IsType<PostgresException>(error.InnerException).SqlState);
     }
