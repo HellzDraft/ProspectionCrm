@@ -19,4 +19,5 @@ public class SavedSearch
     public SourceConfiguration SourceConfiguration { get; set; } = null!;
     public ICollection<SourceExecution> Executions { get; set; } = new List<SourceExecution>();
     public ICollection<OpportunitySource> OpportunitySources { get; set; } = new List<OpportunitySource>();
+    public ICollection<SourceCollectionJob> SourceCollectionJobs { get; set; } = new List<SourceCollectionJob>();
 }

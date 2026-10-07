@@ -9,6 +9,7 @@ public class PipelineStageConfiguration : IEntityTypeConfiguration<PipelineStage
     public void Configure(EntityTypeBuilder<PipelineStage> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasAlternateKey(x => new { x.PipelineId, x.Id });
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
         builder.Property(x => x.Description).HasMaxLength(2000);
         builder.Property(x => x.CategoryCode).IsRequired().HasMaxLength(50);

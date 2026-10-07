@@ -14,4 +14,5 @@ public class PipelineStage
 
     public Pipeline Pipeline { get; set; } = null!;
     public ICollection<Opportunity> Opportunities { get; set; } = new List<Opportunity>();
+    public ICollection<SourceCollectionJob> SourceCollectionJobs { get; set; } = new List<SourceCollectionJob>();
 }

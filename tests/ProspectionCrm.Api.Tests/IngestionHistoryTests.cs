@@ -473,7 +473,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         await db.Database.MigrateAsync();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.False(db.Database.HasPendingModelChanges());
-        Assert.EndsWith("_Phase622PersistentSourceIdentities", (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.EndsWith("_Phase71PersistentCollectionJobs", (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Empty(await db.SourceExecutionItems.ToArrayAsync());
         Assert.Empty(await db.SourceExecutionItemSources.ToArrayAsync());
     }

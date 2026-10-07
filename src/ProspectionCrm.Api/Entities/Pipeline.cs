@@ -20,4 +20,5 @@ public class Pipeline
     public CandidateProfile? PreferredCandidateProfile { get; set; }
     public ICollection<ScoringRule> ScoringRules { get; set; } = [];
     public ICollection<AutomationRule> AutomationRules { get; set; } = [];
+    public ICollection<SourceCollectionJob> SourceCollectionJobs { get; set; } = new List<SourceCollectionJob>();
 }

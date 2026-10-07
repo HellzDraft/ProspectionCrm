@@ -48,6 +48,8 @@ builder.Services.AddSingleton<RssAtomFeedParser>();
 builder.Services.AddSingleton<ISourceAdapter, RssAtomSourceAdapter>();
 builder.Services.AddSingleton<SourceAdapterRegistry>();
 builder.Services.AddScoped<ISourceCollectionService, SourceCollectionService>();
+builder.Services.AddScoped<ISourceCollectionContextResolver, SourceCollectionContextResolver>();
+builder.Services.AddScoped<ISourceCollectionJobService, SourceCollectionJobService>();
 builder.Services.AddScoped<IIngestionHistoryReadService, IngestionHistoryReadService>();
 builder.Services.AddScoped<IOpportunitySourceService, OpportunitySourceService>();
 builder.Services.AddScoped<ICampaignService, CampaignService>();

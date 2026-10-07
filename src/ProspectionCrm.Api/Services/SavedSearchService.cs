@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.SavedSearches;
 using ProspectionCrm.Api.Entities;
@@ -51,22 +52,31 @@ public class SavedSearchService(ProspectionCrmDbContext dbContext, ICurrentWorks
     public async Task<(bool Found, string? Error)> UpdateAsync(Guid id, UpdateSavedSearchRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var entity = await dbContext.SavedSearches
+        var entity = await dbContext.SavedSearches.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (entity is null)
             return (false, null);
         var error = await ValidateAsync(workspaceId, request.PipelineId, request.SourceConfigurationId, request.CriteriaJson, request.PipelineId != entity.PipelineId, request.SourceConfigurationId != entity.SourceConfigurationId, cancellationToken);
         if (error is not null)
             return (true, error);
-        entity.PipelineId = request.PipelineId!.Value;
-        entity.SourceConfigurationId = request.SourceConfigurationId!.Value;
-        entity.Name = request.Name;
-        entity.SearchUrl = request.SearchUrl;
-        entity.CriteriaJson = request.CriteriaJson;
-        entity.Enabled = request.Enabled;
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return (true, null);
+        // PipelineId participates in the collection-job principal key. EF cannot mutate a
+        // tracked key; let PostgreSQL allow unreferenced changes and protect job history.
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var changed = await dbContext.SavedSearches.Where(x => x.Id == id && x.WorkspaceId == workspaceId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.PipelineId, request.PipelineId!.Value)
+                    .SetProperty(x => x.SourceConfigurationId, request.SourceConfigurationId!.Value)
+                    .SetProperty(x => x.Name, request.Name).SetProperty(x => x.SearchUrl, request.SearchUrl)
+                    .SetProperty(x => x.CriteriaJson, request.CriteriaJson).SetProperty(x => x.Enabled, request.Enabled)
+                    .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+            return (changed == 1, null);
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ForeignKeyViolation
+            && exception.TableName == "SourceCollectionJobs")
+        {
+            return (true, "PipelineId cannot change while collection jobs reference this saved search.");
+        }
     }
 
     public async Task<bool> ArchiveAsync(Guid id, CancellationToken cancellationToken)

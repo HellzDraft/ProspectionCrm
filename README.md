@@ -90,8 +90,9 @@ et conserve ses données dans le volume Compose `postgres_data`.
 Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20260925101154_InitialCrmSchema`,
 `20260929150147_Phase42PipelineLifecycleAndDefault`,
-`20261006091016_Phase621IngestionHistoryFoundation`, puis
-`20261006101923_Phase622PersistentSourceIdentities` :
+`20261006091016_Phase621IngestionHistoryFoundation`,
+`20261006101923_Phase622PersistentSourceIdentities`, puis
+`20261007064337_Phase71PersistentCollectionJobs` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -145,7 +146,7 @@ toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 
 source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
 Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
 et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
-les contrats métier. La migration finale reste `20261006101923_Phase622PersistentSourceIdentities`,
+les contrats métier. La migration finale est `20261007064337_Phase71PersistentCollectionJobs`,
 sans migration en attente ni divergence du modèle EF.
 
 Commande locale équivalente à la CI (Docker doit être démarré) :
@@ -331,7 +332,7 @@ Les JSON sont des objets, les IDs vivants restent distincts des IDs snapshot. Un
 exécution legacy reste accessible en 200 avec `legacy-execution` et une page vide.
 Les archives sont consultables ; après suppression physique, l'historique reste
 accessible depuis l'exécution. Aucune route de modification d'observation ni migration
-n'est ajoutée. La dernière migration reste `20261006101923_Phase622PersistentSourceIdentities`.
+n'est ajoutée. La dernière migration de la Phase 6 reste `20261006101923_Phase622PersistentSourceIdentities`.
 
 Le contrat, la normalisation conservative, les compteurs et les limites de provenance
 sont décrits dans [Ingestion manuelle V1](docs/manual-ingestion-v1.md).
@@ -387,3 +388,26 @@ restent versionnées. La racine est créée à la première sauvegarde.
 relatives, avec streams et annulation. `LocalFileStorage` refuse les sorties de racine
 et les écrasements ; la suppression est idempotente. Cette infrastructure n'est pas
 encore reliée à un endpoint ou formulaire d'upload/download.
+
+## File persistante des collectes — Phase 7.1
+
+`POST /api/saved-searches/{savedSearchId}/collection-jobs` reçoit un
+`pipelineStageId` non vide et renvoie **202 Accepted**, le job `queued` et sa
+`Location`. La prévalidation CRM/adaptateur est partagée avec `/collect`, sans
+réseau, ingestion ni SourceExecution à l'enqueue. Un index PostgreSQL interdit
+les jobs actifs identiques ; une demande concurrente retourne 409 avec
+`CollectionJobAlreadyPending` et l'ID existant si disponible.
+
+`GET /api/source-collection-jobs/{id}` et `GET /api/source-collection-jobs` permettent
+lecture et pagination filtrée dans le Workspace courant. `POST
+/api/source-collection-jobs/{id}/cancel` annule atomiquement un job encore queued ;
+une répétition est idempotente. Les jobs ne sont jamais supprimés par cette API.
+
+La migration `20261007064337_Phase71PersistentCollectionJobs` crée une file vide.
+Le job est une commande, sans snapshot ni fingerprint ; la configuration devra
+être relue et revalidée lors du futur traitement. **Aucun Worker ni traitement
+automatique dans 7.1** : un job queued reste queued. Claim/lease, Worker,
+retry/backoff et planification sont réservés aux tranches suivantes.
+
+Voir [le contrat des jobs V1](docs/source-collection-jobs-v1.md). Les contrats
+synchrones `/collect`, `/ingestions`, historique et OpportunitySource restent inchangés.

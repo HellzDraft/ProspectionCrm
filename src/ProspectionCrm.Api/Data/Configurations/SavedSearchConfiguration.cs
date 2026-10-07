@@ -9,6 +9,7 @@ public class SavedSearchConfiguration : IEntityTypeConfiguration<SavedSearch>
     public void Configure(EntityTypeBuilder<SavedSearch> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasAlternateKey(x => new { x.WorkspaceId, x.Id, x.PipelineId });
         builder.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
         builder.Property(x => x.SearchUrl).HasMaxLength(2048);

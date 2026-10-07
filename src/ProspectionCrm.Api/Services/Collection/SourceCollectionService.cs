@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.Collection;
 using ProspectionCrm.Api.Dtos.Ingestions;
@@ -13,8 +12,8 @@ public interface ISourceCollectionService
 public sealed record SourceCollectionResult(int StatusCode, SourceCollectionDto? Value = null,
     SourceAdapterError? Error = null, Guid? ExecutionId = null, int? ItemIndex = null);
 
-public sealed class SourceCollectionService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspaceProvider,
-    SourceAdapterRegistry adapters, IIngestionService ingestion, IServiceScopeFactory scopes,
+public sealed class SourceCollectionService(ICurrentWorkspaceProvider workspaceProvider,
+    ISourceCollectionContextResolver resolver, IIngestionService ingestion, IServiceScopeFactory scopes,
     ILogger<SourceCollectionService> logger) : ISourceCollectionService
 {
     public async Task<SourceCollectionResult> CollectAsync(Guid savedSearchId, CollectSavedSearchRequest request, CancellationToken token)
@@ -36,20 +35,9 @@ public sealed class SourceCollectionService(ProspectionCrmDbContext db, ICurrent
         Guid workspaceId;
         try { workspaceId = await workspaceProvider.GetCurrentWorkspaceIdAsync(token); }
         catch (InvalidOperationException) { return Fail("WorkspaceUnavailable", 409); }
-        var search = await db.SavedSearches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == savedSearchId && x.WorkspaceId == workspaceId, token);
-        if (search is null) return Fail("ResourceNotFound", 404);
-        var source = await db.SourceConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == search.SourceConfigurationId && x.WorkspaceId == workspaceId, token);
-        var pipeline = await db.Pipelines.AsNoTracking().SingleOrDefaultAsync(x => x.Id == search.PipelineId && x.WorkspaceId == workspaceId, token);
-        var stage = await db.PipelineStages.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.PipelineStageId && x.Pipeline.WorkspaceId == workspaceId, token);
-        if (source is null || pipeline is null || stage is null) return Fail("ResourceNotFound", 404);
-        if (!search.Enabled || search.ArchivedAt is not null || !source.Enabled || source.ArchivedAt is not null
-            || pipeline.ArchivedAt is not null || stage.ArchivedAt is not null) return Fail("InactiveResource", 409);
-        if (stage.PipelineId != pipeline.Id) return Fail("WrongPipeline", 409);
-        var adapter = adapters.Find(source.SourceTypeCode);
-        if (adapter is null) return Fail("UnsupportedSourceType", 409);
-        var context = new SourceAdapterContext(search.SearchUrl, search.CriteriaJson);
-        var invalid = adapter.Validate(context);
-        if (invalid is not null) return new(invalid.StatusCode, Error: invalid);
+        var resolved = await resolver.ResolveAsync(workspaceId, savedSearchId, request.PipelineStageId.Value, token);
+        if (resolved.Error is { } validationError) return new(validationError.StatusCode, Error: validationError);
+        var (search, source, pipeline, stage, adapter, context) = resolved.Value!;
         var fingerprint = CollectionFingerprint.Create(search, source, pipeline, stage);
         var snapshot = IngestionHistory.Context(source, search, pipeline, stage);
         // All reads are materialized/no-tracking. EF has closed its connection and there is no transaction.

@@ -36,4 +36,5 @@ public class Workspace
     public ICollection<AiModelConfiguration> AiModelConfigurations { get; set; } = [];
     public ICollection<AiPromptTemplate> AiPromptTemplates { get; set; } = [];
     public ICollection<ActivityEntry> ActivityEntries { get; set; } = [];
+    public ICollection<SourceCollectionJob> SourceCollectionJobs { get; set; } = new List<SourceCollectionJob>();
 }

@@ -22,7 +22,7 @@ active rattachée au pipeline souhaité, avec par exemple :
 `maxItems` entier 1–100 (100 par défaut), société facultative non blanche, trimée,
 200 caractères maximum. `null` explicite n'est pas une société valide. Aucun filtre
 de mots-clés n'est appliqué. Le CRUD générique reste générique ; la validation RSS
-intervient avant le réseau, sur `/collect`.
+intervient avant le réseau, sur `/collect` et lors de la prévalidation des jobs.
 
 ```http
 POST /api/saved-searches/{savedSearchId}/collect
@@ -58,7 +58,8 @@ combine `IRssFeedTransport` et `RssAtomFeedParser`. L'adaptateur n'a aucune dép
 EF et ne crée ni exécution, ni opportunité, ni provenance. Ajouter un adaptateur
 nécessite son inscription DI, sans changement au moteur d'ingestion.
 
-`SourceCollectionService` valide les ressources et matérialise le contexte sans
+`SourceCollectionService` utilise `ISourceCollectionContextResolver`, partagé avec
+la file de jobs, pour valider les ressources et matérialiser le contexte sans
 tracking. Aucun verrou, transaction ou connexion PostgreSQL ne reste ouvert durant
 la récupération. Un SHA-256 hexadécimal minuscule est calculé sur une projection JSON
 canonique explicite (ordre fixe, dates UTC) :
@@ -194,12 +195,28 @@ services/API/parser avec transport déterministe ; il couvre aussi les gates de
 concurrence/annulation, l'absence de connexion durant le réseau et un parcours HTTP
 depuis une base vierge avec bootstrap et 4 pipelines/28 étapes.
 
-Aucun fichier EF ni migration modifié : dernière migration
-`20261006101923_Phase622PersistentSourceIdentities`, GetPendingMigrations vide et
-HasPendingModelChanges=false vérifiés sur reconstruction. Le workflow CI complet
-et l'artifact TRX `test-results` sont conservés.
+La Phase 6.3 ne modifiait aucun fichier EF ni migration : sa dernière migration était
+`20261006101923_Phase622PersistentSourceIdentities`. La reconstruction vérifie désormais
+la chaîne incluant Phase71PersistentCollectionJobs, GetPendingMigrations vide et
+HasPendingModelChanges=false. Le workflow CI complet et l'artifact TRX `test-results`
+sont conservés.
 
-Aucun Worker, BackgroundService, queue, planification, retry/backoff métier, n8n
-opérationnel, scraping, source authentifiée, cache conditionnel, scoring, IA,
-email, automatisation ou interface Blazor n'est ajouté. La normalisation et la
-déduplication du moteur restent inchangées.
+La Phase 6.3 n'ajoutait aucun Worker, BackgroundService, queue, planification,
+retry/backoff métier, n8n opérationnel, scraping, source authentifiée, cache
+conditionnel, scoring, IA, email, automatisation ou interface Blazor.
+La normalisation et la déduplication du moteur restent inchangées.
+
+## File de commandes — Phase 7.1
+
+La route distincte `POST /api/saved-searches/{savedSearchId}/collection-jobs`
+retourne 202 et persiste une commande sans appeler le transport RSS et sans créer
+SourceExecution. Elle partage la prévalidation sans réseau de `/collect` grâce au
+resolver recevant explicitement le WorkspaceId. `/collect` conserve son traitement
+synchrone, ses DTO, ses statuts et son historique.
+
+La file ajoute la migration `20261007064337_Phase71PersistentCollectionJobs`.
+Elle permet lecture, pagination et annulation avant traitement, mais **aucun
+Worker ni traitement automatique**. Aucun snapshot ou fingerprint n'est copié
+dans le job ; le futur Worker devra relire et revalider la configuration courante.
+Voir [SourceCollectionJob V1](source-collection-jobs-v1.md) pour le contrat complet
+et les limites de cette tranche.
