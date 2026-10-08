@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.AutomationRules;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Automation;
 
 namespace ProspectionCrm.Api.Services;
 
@@ -31,9 +32,8 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
     public async Task<(AutomationRuleDto? Item, string? Error)> CreateAsync(CreateAutomationRuleRequest request, CancellationToken cancellationToken)
     {
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
-        var error = JsonObjectValidation.Validate(request.ConditionJson, nameof(request.ConditionJson))
-            ?? JsonObjectValidation.Validate(request.ActionConfigurationJson, nameof(request.ActionConfigurationJson))
-            ?? await RulePipelineValidation.ValidateAsync(dbContext, workspaceId, request.PipelineId,
+        var error = AutomationRuleValidation.Validate(request.TriggerTypeCode, request.ActionTypeCode, request.ConditionJson, request.ActionConfigurationJson)
+            ?? await ValidatePipelineAsync(workspaceId, request.PipelineId,
             true, cancellationToken);
         if (error is not null)
             return (null, error);
@@ -44,9 +44,9 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
             Name = request.Name,
             Description = request.Description,
             TriggerTypeCode = request.TriggerTypeCode,
-            ConditionJson = JsonObjectValidation.NormalizeOptional(request.ConditionJson),
+            ConditionJson = AutomationJson.NormalizeDefinition(request.ConditionJson),
             ActionTypeCode = request.ActionTypeCode,
-            ActionConfigurationJson = JsonObjectValidation.NormalizeOptional(request.ActionConfigurationJson),
+            ActionConfigurationJson = AutomationJson.NormalizeDefinition(request.ActionConfigurationJson),
             Enabled = request.Enabled,
         };
         dbContext.AutomationRules.Add(entity);
@@ -60,9 +60,8 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
         var entity = await dbContext.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (entity is null)
             return (false, null);
-        var error = JsonObjectValidation.Validate(request.ConditionJson, nameof(request.ConditionJson))
-            ?? JsonObjectValidation.Validate(request.ActionConfigurationJson, nameof(request.ActionConfigurationJson))
-            ?? await RulePipelineValidation.ValidateAsync(dbContext, workspaceId, request.PipelineId,
+        var error = AutomationRuleValidation.Validate(request.TriggerTypeCode, request.ActionTypeCode, request.ConditionJson, request.ActionConfigurationJson)
+            ?? await ValidatePipelineAsync(workspaceId, request.PipelineId,
             request.PipelineId != entity.PipelineId, cancellationToken);
         if (error is not null)
             return (true, error);
@@ -70,9 +69,9 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
         entity.Name = request.Name;
         entity.Description = request.Description;
         entity.TriggerTypeCode = request.TriggerTypeCode;
-        entity.ConditionJson = JsonObjectValidation.NormalizeOptional(request.ConditionJson);
+        entity.ConditionJson = AutomationJson.NormalizeDefinition(request.ConditionJson);
         entity.ActionTypeCode = request.ActionTypeCode;
-        entity.ActionConfigurationJson = JsonObjectValidation.NormalizeOptional(request.ActionConfigurationJson);
+        entity.ActionConfigurationJson = AutomationJson.NormalizeDefinition(request.ActionConfigurationJson);
         entity.Enabled = request.Enabled;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -98,7 +97,8 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
         var entity = await dbContext.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
         if (entity is null)
             return (false, null);
-        var error = await RulePipelineValidation.ValidateAsync(dbContext, workspaceId,
+        var error = AutomationRuleValidation.Validate(entity.TriggerTypeCode, entity.ActionTypeCode, entity.ConditionJson, entity.ActionConfigurationJson)
+            ?? await ValidatePipelineAsync(workspaceId,
             entity.PipelineId, true, cancellationToken);
         if (error is not null)
             return (true, error);
@@ -107,6 +107,10 @@ public class AutomationRuleService(ProspectionCrmDbContext dbContext, ICurrentWo
         await dbContext.SaveChangesAsync(cancellationToken);
         return (true, null);
     }
+
+    private async Task<string?> ValidatePipelineAsync(Guid workspaceId, Guid? pipelineId, bool requireActive, CancellationToken token)
+        => await RulePipelineValidation.ValidateAsync(dbContext, workspaceId, pipelineId, requireActive, token) is null
+            ? null : AutomationEvaluationReasons.InvalidPipeline;
 
     private static AutomationRuleDto ToDto(AutomationRule entity) => new()
     {

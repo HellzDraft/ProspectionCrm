@@ -63,8 +63,12 @@ une nouvelle clé. Il n’existe pas d’API de suppression ou de réutilisation
 `INSERT ... ON CONFLICT ... DO NOTHING` confie l’arbitrage à PostgreSQL, même
 en concurrence. Une lecture distincte en READ COMMITTED voit ensuite le gagnant
 commité ; on évite le piège d’une lecture dans le snapshot de l’INSERT concurrent.
-Les méthodes de queue sont des unités d’opération courtes, prévues pour un contexte
-sans transaction englobante ni modifications EF en attente.
+Les méthodes de queue sont des unités d’opération courtes, sans modifications EF
+en attente. `EnqueueAsync` peut participer à la transaction READ COMMITTED courte
+du dispatcher 8.3, avec le même DbContext : la lecture distincte conserve son nouveau
+snapshot après un conflit. Les autres opérations restent indépendantes. Ne pas
+englober cet enqueue dans une transaction REPEATABLE READ ou SERIALIZABLE sans
+gestion explicite des conflits de sérialisation.
 
 ## Claim, lease et recovery
 
@@ -210,9 +214,9 @@ Tout futur consumer devra consulter les paramètres courants et
 avec kill switch désactivé. La politique Phase 8.1 reste la source de vérité.
 Les catégories inconnues sont refusées, jamais rabattues sur general.
 
-La Phase 8.3 pourra définir la production des événements, étendre les triggers et
-introduire un traitement contrôlé des règles avec application effective de cette
-politique. Son contrat devra préciser l’évaluation, les historiques réels et les
-éventuels retries ; ces fonctions ne sont pas annoncées opérationnelles ici.
+La [Phase 8.3](automation-evaluation-v1.md) ajoute le dispatch `manual` et un preview
+pur appliquant cette politique à la règle courante. Elle ne crée aucun historique
+et n’exécute aucune action. Le consumer, les historiques réels et les éventuels
+retries métier restent du périmètre Phase 8.4.
 En Phase 8.2 : ni e-mail, candidature, proposition, IA, n8n, approbation humaine,
 quota appliqué, disjoncteur métier, nouveau frontend ni effet externe.

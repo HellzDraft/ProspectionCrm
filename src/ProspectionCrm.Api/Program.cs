@@ -26,6 +26,9 @@ builder.Services.AddOptions<FileStorageOptions>()
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ICurrentWorkspaceProvider, CurrentWorkspaceProvider>();
 builder.Services.AddSingleton<IAutomationSafetyPolicy, AutomationSafetyPolicy>();
+builder.Services.AddSingleton<IAutomationRuleEvaluator, AutomationRuleEvaluator>();
+builder.Services.AddScoped<IAutomationEventDispatcher, AutomationEventDispatcher>();
+builder.Services.AddScoped<AutomationEvaluationService>();
 builder.Services.AddScoped<AutomationSettingsService>();
 builder.Services.AddOptions<AutomationJobQueueOptions>()
     .Validate(options => options.LeaseDuration > TimeSpan.Zero && options.LeaseDuration <= TimeSpan.FromHours(1),

@@ -24,7 +24,12 @@ ne signifie pas qu'un moteur ou un provider externe est intégré.
 La Phase 8.2 ajoute une [file persistante d’automatisation métier](docs/automation-jobs-v1.md)
 avec déduplication PostgreSQL, claim atomique, leases et API d’administration.
 Elle conserve les événements même lorsque l’automatisation est désactivée ;
-aucune AutomationRule n’est évaluée ou exécutée et aucun effet externe n’est déclenché.
+aucune AutomationRule n’est consommée automatiquement et aucun effet externe n’est déclenché.
+
+La Phase 8.3 ajoute le [dispatch et l’évaluation déterministe V1](docs/automation-evaluation-v1.md) :
+événements `manual`, jobs ciblés et preview de la règle courante avec la policy 8.1.
+L’action `create-crm-task` produit seulement un plan typé ; aucun CrmTask ni historique
+d’exécution n’est créé. Aucun worker d’automatisation n’est démarré.
 
 ## Installation locale
 

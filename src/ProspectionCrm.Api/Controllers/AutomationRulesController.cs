@@ -5,6 +5,8 @@ using ProspectionCrm.Api.Services;
 namespace ProspectionCrm.Api.Controllers;
 
 [ApiController]
+[AutomationEvaluationValidation]
+[AutomationEvaluationException]
 [Route("api/automation-rules")]
 public class AutomationRulesController(IAutomationRuleService service) : ControllerBase
 {
@@ -25,7 +27,7 @@ public class AutomationRulesController(IAutomationRuleService service) : Control
     {
         var (item, error) = await service.CreateAsync(request, cancellationToken);
         if (error is not null)
-            return Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+            return InvalidRule(error);
         return CreatedAtAction(nameof(GetById), new { id = item!.Id }, item);
     }
 
@@ -35,7 +37,7 @@ public class AutomationRulesController(IAutomationRuleService service) : Control
         var (found, error) = await service.UpdateAsync(id, request, cancellationToken);
         if (!found)
             return NotFound();
-        return error is null ? NoContent() : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+        return error is null ? NoContent() : InvalidRule(error);
     }
 
     [HttpPost("{id:guid}/archive")]
@@ -48,6 +50,9 @@ public class AutomationRulesController(IAutomationRuleService service) : Control
         var (found, error) = await service.RestoreAsync(id, cancellationToken);
         if (!found)
             return NotFound();
-        return error is null ? NoContent() : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
+        return error is null ? NoContent() : InvalidRule(error);
     }
+
+    private ObjectResult InvalidRule(string code) => Problem(statusCode: 400, title: "Invalid automation rule",
+        detail: "The rule definition is invalid.", extensions: new Dictionary<string, object?> { ["code"] = code });
 }

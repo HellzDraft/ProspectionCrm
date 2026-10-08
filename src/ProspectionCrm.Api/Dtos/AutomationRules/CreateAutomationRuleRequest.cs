@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace ProspectionCrm.Api.Dtos.AutomationRules;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class CreateAutomationRuleRequest
 {
     public Guid? PipelineId { get; set; }
