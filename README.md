@@ -18,8 +18,8 @@ certaines fonctionnalités restent des préparations ou des démonstrations loca
 
 La solution `ProspectionCrm.slnx` regroupe les deux applications et le projet de tests.
 Le schéma comprend notamment workspaces, prospection, candidatures, profils,
-documents et historiques métier. La présence d'entités d'automatisation ou d'IA
-ne signifie pas qu'un moteur ou un provider externe est intégré.
+documents et historiques métier. Le moteur d’automatisation interne est décrit
+ci-dessous. Les entités d’IA restent préparatoires, sans provider externe intégré.
 
 La Phase 8.2 ajoute une [file persistante d’automatisation métier](docs/automation-jobs-v1.md)
 avec déduplication PostgreSQL, claim atomique, leases et API d’administration.
@@ -30,6 +30,12 @@ La Phase 8.3 ajoute le [dispatch et l’évaluation déterministe V1](docs/autom
 événements `manual`, jobs ciblés et preview de la règle courante avec la policy 8.1.
 L’action `create-crm-task` produit seulement un plan typé ; aucun CrmTask ni historique
 d’exécution n’est créé. Aucun worker d’automatisation n’est démarré.
+
+La Phase 8.4 ajoute le [worker d’automatisation métier](docs/automation-worker-v1.md),
+désactivé par défaut : seule la décision `automatic` peut créer un `CrmTask` local.
+Le runtime conserve les tentatives, protège l’idempotence par job dans PostgreSQL,
+applique quotas et circuit breaker, et réconcilie les leases après crash.
+Les modes `manual` et `assist` restent sans effet métier ni approbation persistante.
 
 ## Installation locale
 
@@ -106,8 +112,9 @@ Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20261007074738_Phase72CollectionWorkerLeases`,
 `20261007083908_Phase73CollectionRetries`,
 `20261007094120_Phase74CollectionScheduling`,
-`20261007124044_Phase81AutomationRuntimeSettings`, puis
-`20261008083956_Phase82AutomationJobs` :
+`20261007124044_Phase81AutomationRuntimeSettings`,
+`20261008083956_Phase82AutomationJobs`, puis
+`20261008124357_Phase84AutomationExecutionRuntime` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development
@@ -136,7 +143,7 @@ annulation et protection des chemins. Ils utilisent des dossiers temporaires net
 sans PostgreSQL, Docker, n8n ni accès au véritable `data/files`.
 Ils ne constituent pas une couverture complète du métier.
 
-Les tests métier des Phases 4 à 7 nécessitent **Docker démarré avec des conteneurs Linux**.
+Les tests métier des Phases 4 à 8 nécessitent **Docker démarré avec des conteneurs Linux**.
 Testcontainers crée un PostgreSQL 18 jetable par test, sur un port hôte aléatoire,
 et y applique les migrations réelles. Le premier lancement peut télécharger
 `postgres:18` et l'image de nettoyage Testcontainers. Aucun conteneur, volume,
@@ -161,7 +168,7 @@ toutes les migrations, puis reconstruit par HTTP bootstrap, quatre pipelines/28 
 source, recherche, ingestion, rejeu, fallback durable, conflit et lecture historique.
 Il vérifie aussi archives, suppression physique, snapshots conservés, isolation Workspace
 et absence de mutation par GET. La Phase 6.2.6 consolide ainsi la Phase 6.2 sans changer
-les contrats métier. La migration finale est `20261007094120_Phase74CollectionScheduling`,
+les contrats métier. La migration finale est `20261008124357_Phase84AutomationExecutionRuntime`,
 sans migration en attente ni divergence du modèle EF.
 
 Commande locale équivalente à la CI (Docker doit être démarré) :

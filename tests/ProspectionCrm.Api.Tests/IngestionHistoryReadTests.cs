@@ -92,7 +92,7 @@ public sealed class IngestionHistoryReadTests : PersistentSourceIdentityFixture
         var items = await Get<SourceExecutionItemsPageDto>(client, Execution(execution) + "/items");
         Assert.False(items.HistoryAvailable); Assert.Equal(0, items.TotalCount); Assert.Empty(items.Items); Assert.False(items.HasMore);
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal("20261008083956_Phase82AutomationJobs", (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal("20261008124357_Phase84AutomationExecutionRuntime", (await db.Database.GetAppliedMigrationsAsync()).Last());
     }
 
     [Fact]

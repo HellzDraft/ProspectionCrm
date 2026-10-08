@@ -35,6 +35,18 @@ builder.Services.AddOptions<AutomationJobQueueOptions>()
         "Automation job lease duration must be positive and at most one hour.").ValidateOnStart();
 builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddOptions<AutomationWorkerOptions>()
+    .Bind(builder.Configuration.GetRequiredSection(AutomationWorkerOptions.SectionName))
+    .Validate(options => options.IsValid(), "AutomationWorker options are outside the supported bounds.")
+    .ValidateOnStart();
+builder.Services.AddScoped<AutomationRuntimeStore>();
+builder.Services.AddScoped<IAutomationWorkSource, AutomationWorkSource>();
+builder.Services.AddScoped<IAutomationJobRecovery, AutomationJobRecovery>();
+builder.Services.AddScoped<IAutomationJobProcessor, AutomationJobProcessor>();
+builder.Services.AddScoped<IAutomationActionExecutor, CreateCrmTaskAutomationExecutor>();
+builder.Services.AddSingleton<IAutomationWorkerDelay, AutomationWorkerDelay>();
+builder.Services.AddHostedService<AutomationWorker>();
 builder.Services.AddScoped<IBootstrapService, BootstrapService>();
 builder.Services.AddScoped<IInitialPipelineService, InitialPipelineService>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();

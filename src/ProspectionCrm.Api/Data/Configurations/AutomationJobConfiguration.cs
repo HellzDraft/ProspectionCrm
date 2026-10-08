@@ -11,6 +11,7 @@ public sealed class AutomationJobConfiguration : IEntityTypeConfiguration<Automa
     public void Configure(EntityTypeBuilder<AutomationJob> b)
     {
         b.HasKey(x => x.Id);
+        b.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
         b.Property(x => x.TriggerTypeCode).IsRequired().HasMaxLength(50);
         b.Property(x => x.TriggerKey).HasMaxLength(AutomationJobLimits.TriggerKeyLength);
         b.Property(x => x.ActionCategoryCode).IsRequired().HasMaxLength(50);

@@ -320,7 +320,7 @@ public sealed class RssCollectionTests : PersistentSourceIdentityFixture
     {
         await using var db = Db(); Assert.Empty(await db.Database.GetAppliedMigrationsAsync());
         await db.Database.MigrateAsync(); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal("20261008083956_Phase82AutomationJobs", db.Database.GetMigrations().Last());
+        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal("20261008124357_Phase84AutomationExecutionRuntime", db.Database.GetMigrations().Last());
         var fake = new FakeTransport(Rss()); using var factory = Factory(fake); using var client = Client(factory);
         using var bootstrap = await client.PostAsync("/api/setup/bootstrap", null); Assert.Equal(HttpStatusCode.Created, bootstrap.StatusCode);
         using var initial = await client.PostAsync("/api/setup/initial-pipelines", null); Assert.Equal(HttpStatusCode.Created, initial.StatusCode);

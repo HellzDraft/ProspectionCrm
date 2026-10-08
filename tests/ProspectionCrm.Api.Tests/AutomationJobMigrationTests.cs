@@ -32,7 +32,13 @@ public sealed class AutomationJobMigrationTests : IAsyncLifetime
             AutomationRuntimeSettings = new() { IsEnabled = true, OperatingModeCode = "assist" } };
         var rule = new AutomationRule { Workspace = workspace, Name = "Existing rule", TriggerTypeCode = "manual", ActionTypeCode = "test", ConditionJson = "{}" };
         var execution = new AutomationExecution { Workspace = workspace, AutomationRule = rule, StatusCode = "pending", TriggeredAt = DateTimeOffset.UtcNow };
-        db.Add(execution); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        db.Add(rule); await db.SaveChangesAsync();
+        // The current EF model has 8.4 columns that do not exist in the old schema yet.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "AutomationExecutions" ("Id", "WorkspaceId", "AutomationRuleId", "StatusCode", "TriggeredAt")
+            VALUES ({execution.Id}, {workspace.Id}, {rule.Id}, 'pending', {execution.TriggeredAt})
+            """);
+        db.ChangeTracker.Clear();
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); await AssertCurrent(db); Assert.Equal(before, await Snapshot(db));
         Assert.Empty(await db.AutomationJobs.ToListAsync());
@@ -47,14 +53,15 @@ public sealed class AutomationJobMigrationTests : IAsyncLifetime
 
     private static async Task AssertCurrent(ProspectionCrmDbContext db)
     {
-        Assert.Equal(Current, db.Database.GetMigrations().Last());
+        Assert.Equal(AutomationRuntimeMigrationTests.Current, db.Database.GetMigrations().Last());
         Assert.Equal(db.Database.GetMigrations(), await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
     }
     private static async Task<string[]> Snapshot(ProspectionCrmDbContext db) => await db.Database.SqlQuery<string>($"""
         SELECT to_jsonb(w)::text AS "Value" FROM "Workspaces" w
         UNION ALL SELECT to_jsonb(r)::text FROM "AutomationRules" r
-        UNION ALL SELECT to_jsonb(e)::text FROM "AutomationExecutions" e
+        UNION ALL SELECT (to_jsonb(e) - ARRAY['AutomationJobId','AttemptNumber','ActionTypeCode','ReasonCode',
+            'IsAutomaticAttempt','IsDeferred','EffectApplied','OutcomeSequence'])::text FROM "AutomationExecutions" e
         UNION ALL SELECT to_jsonb(s)::text FROM "AutomationRuntimeSettings" s
         ORDER BY "Value"
         """).ToArrayAsync();
