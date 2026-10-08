@@ -20,11 +20,12 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Equal(before, await Snapshot());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.Equal(BeforeJobs, migrations[^6]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^5]);
-        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^4]);
-        Assert.EndsWith("_Phase73CollectionRetries", migrations[^3]);
-        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^2]);
-        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^1]);
+        Assert.Equal(BeforeJobs, migrations[^7]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^6]);
+        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^5]);
+        Assert.EndsWith("_Phase73CollectionRetries", migrations[^4]);
+        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^3]);
+        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^2]);
+        Assert.EndsWith("_Phase82AutomationJobs", migrations[^1]);
         Assert.Equal(migrations, await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         await AssertSchema();
@@ -51,7 +52,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var tables = new List<string>();
         await using (var command = new NpgsqlCommand("""
             SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-            AND tablename NOT IN ('__EFMigrationsHistory', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
+            AND tablename NOT IN ('__EFMigrationsHistory', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync())
             while (await reader.ReadAsync()) tables.Add(reader.GetString(0));

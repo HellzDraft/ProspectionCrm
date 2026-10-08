@@ -39,7 +39,7 @@ public sealed class SourceCollectionSchedulingMigrationTests : PersistentSourceI
         var tables = new List<string>();
         await using (var command = new NpgsqlCommand("""
             SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-                AND tablename NOT IN ('__EFMigrationsHistory', 'AutomationRuntimeSettings', 'SourceCollectionSchedules') ORDER BY tablename
+                AND tablename NOT IN ('__EFMigrationsHistory', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionSchedules') ORDER BY tablename
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync()) while (await reader.ReadAsync()) tables.Add(reader.GetString(0));
         var snapshots = new List<string>();

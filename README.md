@@ -21,6 +21,11 @@ Le schéma comprend notamment workspaces, prospection, candidatures, profils,
 documents et historiques métier. La présence d'entités d'automatisation ou d'IA
 ne signifie pas qu'un moteur ou un provider externe est intégré.
 
+La Phase 8.2 ajoute une [file persistante d’automatisation métier](docs/automation-jobs-v1.md)
+avec déduplication PostgreSQL, claim atomique, leases et API d’administration.
+Elle conserve les événements même lorsque l’automatisation est désactivée ;
+aucune AutomationRule n’est évaluée ou exécutée et aucun effet externe n’est déclenché.
+
 ## Installation locale
 
 ### 1. Prérequis et clone
@@ -94,8 +99,10 @@ Appliquer explicitement toutes les migrations versionnées, dans l'ordre :
 `20261006101923_Phase622PersistentSourceIdentities`,
 `20261007064337_Phase71PersistentCollectionJobs`,
 `20261007074738_Phase72CollectionWorkerLeases`,
-`20261007083908_Phase73CollectionRetries`, puis
-`20261007094120_Phase74CollectionScheduling` :
+`20261007083908_Phase73CollectionRetries`,
+`20261007094120_Phase74CollectionScheduling`,
+`20261007124044_Phase81AutomationRuntimeSettings`, puis
+`20261008083956_Phase82AutomationJobs` :
 
 ```powershell
 dotnet ef database update --project src/ProspectionCrm.Api --startup-project src/ProspectionCrm.Api -- --environment Development

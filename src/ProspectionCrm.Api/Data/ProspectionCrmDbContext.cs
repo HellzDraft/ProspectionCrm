@@ -47,6 +47,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
 
     public DbSet<ScoringRule> ScoringRules => Set<ScoringRule>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
+    public DbSet<AutomationJob> AutomationJobs => Set<AutomationJob>();
     public DbSet<AutomationExecution> AutomationExecutions => Set<AutomationExecution>();
     public DbSet<AiModelConfiguration> AiModelConfigurations => Set<AiModelConfiguration>();
     public DbSet<AiPromptTemplate> AiPromptTemplates => Set<AiPromptTemplate>();
