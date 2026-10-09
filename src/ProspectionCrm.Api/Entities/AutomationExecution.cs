@@ -10,6 +10,9 @@ public class AutomationExecution
     public string? ActionTypeCode { get; set; }
     public string? ReasonCode { get; set; }
     public bool IsAutomaticAttempt { get; set; }
+    public bool IsHumanApprovedAttempt { get; set; }
+    public Guid? AutomationActionRequestId { get; set; }
+    public AutomationActionRequest? AutomationActionRequest { get; set; }
     public bool IsDeferred { get; set; }
     public bool EffectApplied { get; set; }
     // Assigned under the workspace automation lock; timestamps alone cannot order concurrent outcomes.

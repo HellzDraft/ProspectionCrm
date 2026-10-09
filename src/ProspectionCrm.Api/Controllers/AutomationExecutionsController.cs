@@ -10,9 +10,9 @@ public class AutomationExecutionsController(IAutomationExecutionService service)
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AutomationExecutionDto>>> GetAll(CancellationToken cancellationToken,
-        [FromQuery] Guid? automationRuleId = null, [FromQuery] string? statusCode = null, [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null, [FromQuery] Guid? automationJobId = null)
+        [FromQuery] Guid? automationRuleId = null, [FromQuery] string? statusCode = null, [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null, [FromQuery] Guid? automationJobId = null, [FromQuery] Guid? automationActionRequestId = null)
     {
-        var (items, error) = await service.GetAllAsync(automationRuleId, statusCode, from, to, automationJobId, cancellationToken);
+        var (items, error) = await service.GetAllAsync(automationRuleId, statusCode, from, to, automationJobId, cancellationToken, automationActionRequestId);
         return error is null ? Ok(items) : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
     }
 

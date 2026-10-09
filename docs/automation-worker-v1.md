@@ -1,5 +1,11 @@
 # Worker d’automatisation métier — Phase 8.4
 
+> Extension Phase 8.5 : voir [demandes d’action et décisions humaines](automation-action-requests-v1.md).
+> Les détails et le rapport 8.4 ci-dessous décrivent la version de départ. Pour les
+> nouveaux traitements manual/assist, une demande persistante et un job
+> awaiting-approval remplacent le skipped définitif. Les effets approuvés restent
+> soumis au kill switch, mais sont exclus des quotas et du circuit automatiques.
+
 ## Portée et activation
 
 Le consumer AutomationWorker est un BackgroundService hébergé dans l’API.

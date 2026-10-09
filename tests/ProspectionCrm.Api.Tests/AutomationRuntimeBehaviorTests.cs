@@ -11,8 +11,6 @@ public sealed class AutomationRuntimeBehaviorTests(AutomationJobDatabase databas
     : AutomationRuntimeFixture(database), IClassFixture<AutomationJobDatabase>
 {
     [Theory]
-    [InlineData("manual", "eligible-manual", "skipped", 0)]
-    [InlineData("assist", "eligible-approval-required", "skipped", 0)]
     [InlineData("automatic", "task-created", "succeeded", 1)]
     public async Task ModesApplyOnlyAutomaticEffects(string mode, string reason, string status, int tasks)
     {

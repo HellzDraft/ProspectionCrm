@@ -35,7 +35,11 @@ La Phase 8.4 ajoute le [worker d’automatisation métier](docs/automation-worke
 désactivé par défaut : seule la décision `automatic` peut créer un `CrmTask` local.
 Le runtime conserve les tentatives, protège l’idempotence par job dans PostgreSQL,
 applique quotas et circuit breaker, et réconcilie les leases après crash.
-Les modes `manual` et `assist` restent sans effet métier ni approbation persistante.
+La Phase 8.5 ajoute les [demandes d’action et décisions humaines persistantes](docs/automation-action-requests-v1.md).
+Les modes `manual` et `assist` placent les jobs en `awaiting-approval`, sans tâche
+ni historique d’exécution. Approve remet le job en file ; le worker exécute ensuite
+le snapshot approuvé. Les effets humains restent soumis au kill switch et sont
+exclus des quotas et du circuit automatiques. Aucun effet externe n’est ajouté.
 
 ## Installation locale
 

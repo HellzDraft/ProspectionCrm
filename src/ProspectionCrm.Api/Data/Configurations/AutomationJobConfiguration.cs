@@ -37,7 +37,7 @@ public sealed class AutomationJobConfiguration : IEntityTypeConfiguration<Automa
         b.HasIndex(x => new { x.WorkspaceId, x.CreatedAt, x.Id }).IsDescending(false, true, true);
         b.ToTable("AutomationJobs", t =>
         {
-            t.HasCheckConstraint("CK_AutomationJobs_Status", $"\"StatusCode\" IN ('{AutomationJobStatuses.Pending}', '{AutomationJobStatuses.Leased}', '{AutomationJobStatuses.Completed}', '{AutomationJobStatuses.Failed}', '{AutomationJobStatuses.Cancelled}')");
+            t.HasCheckConstraint("CK_AutomationJobs_Status", $"\"StatusCode\" IN ('{AutomationJobStatuses.Pending}', '{AutomationJobStatuses.Leased}', '{AutomationJobStatuses.Completed}', '{AutomationJobStatuses.Failed}', '{AutomationJobStatuses.Cancelled}', '{AutomationJobStatuses.AwaitingApproval}')");
             t.HasCheckConstraint("CK_AutomationJobs_Priority", $"\"Priority\" BETWEEN {AutomationJobLimits.MinPriority} AND {AutomationJobLimits.MaxPriority}");
             t.HasCheckConstraint("CK_AutomationJobs_Attempts", "\"AttemptCount\" >= 0");
             t.HasCheckConstraint("CK_AutomationJobs_Trigger", $"\"TriggerTypeCode\" IN ('{AutomationJobTriggers.Manual}')");
@@ -49,7 +49,7 @@ public sealed class AutomationJobConfiguration : IEntityTypeConfiguration<Automa
                 """);
             t.HasCheckConstraint("CK_AutomationJobs_CompletedAt", $"""
                 ("StatusCode" IN ('{AutomationJobStatuses.Completed}', '{AutomationJobStatuses.Failed}', '{AutomationJobStatuses.Cancelled}') AND "CompletedAt" IS NOT NULL)
-                OR ("StatusCode" IN ('{AutomationJobStatuses.Pending}', '{AutomationJobStatuses.Leased}') AND "CompletedAt" IS NULL)
+                OR ("StatusCode" IN ('{AutomationJobStatuses.Pending}', '{AutomationJobStatuses.Leased}', '{AutomationJobStatuses.AwaitingApproval}') AND "CompletedAt" IS NULL)
                 """);
             t.HasCheckConstraint("CK_AutomationJobs_Context", $"\"ContextJson\" IS NULL OR (jsonb_typeof(\"ContextJson\") = 'object' AND octet_length(\"ContextJson\"::text) <= {AutomationJobLimits.StoredContextBytes})");
             t.HasCheckConstraint("CK_AutomationJobs_Error", $"\"LastError\" IS NULL OR (\"StatusCode\" = '{AutomationJobStatuses.Failed}' AND \"LastError\" IN ('{AutomationJobErrors.JobFailed}', '{AutomationJobErrors.ProcessingRejected}'))");

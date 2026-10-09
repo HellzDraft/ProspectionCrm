@@ -41,6 +41,8 @@ builder.Services.AddOptions<AutomationWorkerOptions>()
     .Validate(options => options.IsValid(), "AutomationWorker options are outside the supported bounds.")
     .ValidateOnStart();
 builder.Services.AddScoped<AutomationRuntimeStore>();
+builder.Services.AddScoped<AutomationActionRequestStore>();
+builder.Services.AddScoped<AutomationActionRequestService>();
 builder.Services.AddScoped<IAutomationWorkSource, AutomationWorkSource>();
 builder.Services.AddScoped<IAutomationJobRecovery, AutomationJobRecovery>();
 builder.Services.AddScoped<IAutomationJobProcessor, AutomationJobProcessor>();

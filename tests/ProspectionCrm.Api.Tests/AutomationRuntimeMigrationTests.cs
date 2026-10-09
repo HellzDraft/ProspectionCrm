@@ -11,7 +11,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class AutomationRuntimeMigrationTests : IAsyncLifetime
 {
-    public const string Current = "20261008124357_Phase84AutomationExecutionRuntime";
+    public const string Current = "20261009115938_Phase85AutomationActionRequests";
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:18").Build();
     public Task InitializeAsync() => postgres.StartAsync();
     public Task DisposeAsync() => postgres.DisposeAsync().AsTask();
@@ -75,7 +75,7 @@ public sealed class AutomationRuntimeMigrationTests : IAsyncLifetime
         SELECT (to_jsonb(t) - 'AutomationJobId')::text AS "Value" FROM "CrmTasks" t
         UNION ALL
         SELECT (to_jsonb(e) - ARRAY['AutomationJobId','AttemptNumber','ActionTypeCode','ReasonCode',
-            'IsAutomaticAttempt','IsDeferred','EffectApplied','OutcomeSequence'])::text FROM "AutomationExecutions" e
+            'IsAutomaticAttempt','IsDeferred','EffectApplied','OutcomeSequence','AutomationActionRequestId','IsHumanApprovedAttempt'])::text FROM "AutomationExecutions" e
         UNION ALL SELECT to_jsonb(j)::text FROM "AutomationJobs" j
         ORDER BY "Value"
         """).ToArrayAsync();

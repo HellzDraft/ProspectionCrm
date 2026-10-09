@@ -9,7 +9,7 @@ namespace ProspectionCrm.Api.Services.Automation;
 public sealed class AutomationLeaseLostException : Exception { }
 
 public sealed record AutomationRuntimeInput(AutomationRule? Rule, AutomationRuntimeSettings? Settings,
-    AutomationEvaluationResult? Evaluation);
+    AutomationEvaluationResult? Evaluation, AutomationActionRequest? ActionRequest = null);
 
 public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomationRuleEvaluator evaluator,
     TimeProvider clock, IOptions<AutomationWorkerOptions> options)
@@ -48,6 +48,13 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
 
     public async Task<AutomationRuntimeInput> ReadAsync(AutomationJob job, bool locked, CancellationToken token)
     {
+        var request = locked
+            ? await db.AutomationActionRequests.FromSqlInterpolated($"""
+                SELECT * FROM "AutomationActionRequests" WHERE "AutomationJobId" = {job.Id}
+                    AND "WorkspaceId" = {job.WorkspaceId} FOR SHARE
+                """).AsNoTracking().SingleOrDefaultAsync(token)
+            : await db.AutomationActionRequests.AsNoTracking().SingleOrDefaultAsync(
+                x => x.AutomationJobId == job.Id && x.WorkspaceId == job.WorkspaceId, token);
         var rule = locked
             ? await db.AutomationRules.FromSqlInterpolated($"""
                 SELECT * FROM "AutomationRules" WHERE "Id" = {job.AutomationRuleId}
@@ -60,7 +67,9 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
                 SELECT * FROM "AutomationRuntimeSettings" WHERE "WorkspaceId" = {job.WorkspaceId} FOR SHARE
                 """).AsNoTracking().SingleOrDefaultAsync(token)
             : await db.AutomationRuntimeSettings.AsNoTracking().SingleOrDefaultAsync(x => x.WorkspaceId == job.WorkspaceId, token);
-        return new(rule, settings, rule is not null && settings is not null ? evaluator.Evaluate(job, rule, settings) : null);
+        // An existing decision owns the path, irrespective of subsequent global mode changes.
+        return new(rule, settings, request is null && rule is not null && settings is not null
+            ? evaluator.Evaluate(job, rule, settings) : null, request);
     }
 
     public Task<int> FailuresAsync(Guid job, CancellationToken token) => db.AutomationExecutions
@@ -77,14 +86,14 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
         var now = Now;
         if (!settings.IsEnabled) return (AutomationReasons.Disabled, now.AddSeconds(options.Value.DeferredDelaySeconds));
         var outcomes = await db.AutomationExecutions.AsNoTracking()
-            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.OutcomeSequence != null)
+            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.IsAutomaticAttempt && x.OutcomeSequence != null)
             .OrderByDescending(x => x.OutcomeSequence).Take(settings.MaxConsecutiveFailures)
             .Select(x => x.EffectApplied).ToListAsync(token);
         if (outcomes.Count == settings.MaxConsecutiveFailures && outcomes.All(x => !x))
             return ("circuit-open", now.AddSeconds(options.Value.DeferredDelaySeconds));
         var day = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var effects = db.AutomationExecutions.AsNoTracking()
-            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.EffectApplied);
+            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.IsAutomaticAttempt && x.EffectApplied);
         var dayCount = await effects.CountAsync(x => x.FinishedAt >= day && x.FinishedAt < day.AddDays(1), token);
         if (dayCount >= settings.MaxExecutionsPerDay) return ("daily-quota", day.AddDays(1));
         var start = now.AddMinutes(-1);
@@ -98,12 +107,17 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
     public AutomationExecution NewAttempt(AutomationJob job, AutomationRuntimeInput input)
     {
         var now = Now;
-        var execution = new AutomationExecution { WorkspaceId = job.WorkspaceId, AutomationRuleId = job.AutomationRuleId!.Value,
+        var execution = new AutomationExecution { WorkspaceId = job.WorkspaceId,
+            AutomationRuleId = input.ActionRequest?.StatusCode == ActionRequestStatuses.Approved
+                ? input.ActionRequest.AutomationRuleId : job.AutomationRuleId!.Value,
             AutomationJobId = job.Id, AttemptNumber = job.AttemptCount, StatusCode = "running",
             TriggeredAt = now, StartedAt = now,
-            ActionTypeCode = AutomationActionCatalog.Find(input.Rule?.ActionTypeCode)?.TypeCode,
-            IsAutomaticAttempt = input.Evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic };
-        Describe(execution, job, input.Evaluation?.ReasonCode ?? "automation-settings-missing");
+            ActionTypeCode = AutomationActionCatalog.Find(input.ActionRequest?.ActionTypeCode ?? input.Rule?.ActionTypeCode)?.TypeCode,
+            IsAutomaticAttempt = input.ActionRequest is null && input.Evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic,
+            IsHumanApprovedAttempt = input.ActionRequest?.StatusCode == ActionRequestStatuses.Approved,
+            AutomationActionRequestId = input.ActionRequest?.StatusCode == ActionRequestStatuses.Approved ? input.ActionRequest.Id : null };
+        Describe(execution, job, execution.IsHumanApprovedAttempt ? ActionRequestCodes.HumanApproved
+            : input.Evaluation?.ReasonCode ?? "automation-settings-missing");
         return execution;
     }
 

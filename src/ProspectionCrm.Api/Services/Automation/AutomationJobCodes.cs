@@ -3,8 +3,8 @@ namespace ProspectionCrm.Api.Services.Automation;
 public static class AutomationJobStatuses
 {
     public const string Pending = "pending", Leased = "leased", Completed = "completed",
-        Failed = "failed", Cancelled = "cancelled";
-    public static bool IsValid(string? code) => code is Pending or Leased or Completed or Failed or Cancelled;
+        Failed = "failed", Cancelled = "cancelled", AwaitingApproval = "awaiting-approval";
+    public static bool IsValid(string? code) => code is Pending or Leased or Completed or Failed or Cancelled or AwaitingApproval;
 }
 
 public static class AutomationJobTriggers

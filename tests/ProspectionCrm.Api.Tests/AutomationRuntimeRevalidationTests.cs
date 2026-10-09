@@ -34,6 +34,12 @@ public sealed class AutomationRuntimeRevalidationTests(AutomationJobDatabase dat
             else await ChangeRule(setup.Rule.Id, r => r.ActionConfigurationJson = """{"title":"Updated after start"}""");
         });
         await Process(claim, interceptor: interceptor);
+        if (change is "manual" or "assist")
+        {
+            Assert.Empty(await Executions(claim.Id)); Assert.Empty(await Tasks(claim.Id));
+            Assert.Equal("awaiting-approval", (await Job(claim.Id)).StatusCode);
+            return;
+        }
         Assert.Equal(reason, Assert.Single(await Executions(claim.Id)).ReasonCode);
         Assert.Equal("completed", (await Job(claim.Id)).StatusCode);
         if (change == "configuration") Assert.Equal("Updated after start", Assert.Single(await Tasks(claim.Id)).Title);

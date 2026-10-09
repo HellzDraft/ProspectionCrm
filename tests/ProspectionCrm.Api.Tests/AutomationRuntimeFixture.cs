@@ -66,10 +66,10 @@ public abstract class AutomationRuntimeFixture(AutomationJobDatabase database) :
         var runtime = Runtime(db, evaluator); var realQueue = Queue(db);
         var processor = new AutomationJobProcessor(db, queue?.Invoke(realQueue) ?? realQueue, runtime,
             executor?.Invoke(db, runtime) ?? new CreateCrmTaskAutomationExecutor(db, runtime),
-            Options.Create(Config), NullLogger<AutomationJobProcessor>.Instance);
+            Options.Create(Config), NullLogger<AutomationJobProcessor>.Instance, new AutomationActionRequestStore(db, runtime));
         await processor.ProcessAsync(claim, owner ?? claim.LeaseOwner!, token);
     }
-    private ProspectionCrmDbContext InterceptedDb(IInterceptor interceptor)
+    protected ProspectionCrmDbContext InterceptedDb(IInterceptor interceptor)
     {
         using var configuration = Db();
         return new(new DbContextOptionsBuilder<ProspectionCrmDbContext>()

@@ -61,7 +61,7 @@ public sealed class AutomationJobMigrationTests : IAsyncLifetime
         SELECT to_jsonb(w)::text AS "Value" FROM "Workspaces" w
         UNION ALL SELECT to_jsonb(r)::text FROM "AutomationRules" r
         UNION ALL SELECT (to_jsonb(e) - ARRAY['AutomationJobId','AttemptNumber','ActionTypeCode','ReasonCode',
-            'IsAutomaticAttempt','IsDeferred','EffectApplied','OutcomeSequence'])::text FROM "AutomationExecutions" e
+            'IsAutomaticAttempt','IsDeferred','EffectApplied','OutcomeSequence','AutomationActionRequestId','IsHumanApprovedAttempt'])::text FROM "AutomationExecutions" e
         UNION ALL SELECT to_jsonb(s)::text FROM "AutomationRuntimeSettings" s
         ORDER BY "Value"
         """).ToArrayAsync();

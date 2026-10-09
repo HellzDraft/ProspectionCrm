@@ -8,7 +8,7 @@ namespace ProspectionCrm.Api.Services;
 public class AutomationExecutionService(ProspectionCrmDbContext dbContext, ICurrentWorkspaceProvider currentWorkspaceProvider)
     : IAutomationExecutionService
 {
-    public async Task<(IReadOnlyList<AutomationExecutionDto>? Items, string? Error)> GetAllAsync(Guid? automationRuleId = null, string? statusCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? automationJobId = null, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyList<AutomationExecutionDto>? Items, string? Error)> GetAllAsync(Guid? automationRuleId = null, string? statusCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? automationJobId = null, CancellationToken cancellationToken = default, Guid? automationActionRequestId = null)
     {
         if (from.HasValue && to.HasValue && from > to)
             return (null, "From must be less than or equal to To.");
@@ -21,6 +21,7 @@ public class AutomationExecutionService(ProspectionCrmDbContext dbContext, ICurr
             .Where(x => x.WorkspaceId == workspaceId
                 && (automationRuleId == null || x.AutomationRuleId == automationRuleId)
                 && (automationJobId == null || x.AutomationJobId == automationJobId)
+                && (automationActionRequestId == null || x.AutomationActionRequestId == automationActionRequestId)
                 && (statusCode == null || x.StatusCode == statusCode)
                 && (from == null || x.TriggeredAt >= from)
                 && (to == null || x.TriggeredAt <= to))
@@ -41,6 +42,9 @@ public class AutomationExecutionService(ProspectionCrmDbContext dbContext, ICurr
         Id = entity.Id,
         AutomationRuleId = entity.AutomationRuleId,
         AutomationJobId = entity.AutomationJobId,
+        AutomationActionRequestId = entity.AutomationActionRequestId,
+        IsAutomaticAttempt = entity.IsAutomaticAttempt,
+        IsHumanApprovedAttempt = entity.IsHumanApprovedAttempt,
         AttemptNumber = entity.AttemptNumber,
         ActionTypeCode = entity.ActionTypeCode,
         ReasonCode = entity.ReasonCode,

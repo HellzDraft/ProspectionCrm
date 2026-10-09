@@ -1,5 +1,10 @@
 # File persistante d’automatisation métier — Phase 8.2
 
+> Phase 8.5 ajoute l’état `awaiting-approval` et des transitions transactionnelles
+> dédiées aux [demandes d’action](automation-action-requests-v1.md). Claim et Recover
+> ignorent cet état ; les filtres et DTO de lecture l’exposent. Les contrats de
+> queue 8.2 décrits ci-dessous restent inchangés pour leurs opérations existantes.
+
 `AutomationJob` conserve un travail à traiter. `AutomationExecution` reste
 l’historique d’une évaluation/exécution métier réelle : l’enqueue et les transitions
 de queue ne créent jamais cet historique. Aucune règle n’est évaluée, aucun

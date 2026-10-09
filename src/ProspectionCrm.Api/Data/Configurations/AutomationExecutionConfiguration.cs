@@ -12,6 +12,10 @@ public class AutomationExecutionConfiguration : IEntityTypeConfiguration<Automat
         builder.Property(x => x.ActionTypeCode).HasMaxLength(50);
         builder.Property(x => x.ReasonCode).HasMaxLength(100);
         builder.Property(x => x.IsAutomaticAttempt).HasDefaultValue(false);
+        builder.Property(x => x.IsHumanApprovedAttempt).HasDefaultValue(false);
+        builder.HasOne(x => x.AutomationActionRequest).WithMany()
+            .HasForeignKey(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.AutomationActionRequestId })
+            .HasPrincipalKey(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.IsDeferred).HasDefaultValue(false);
         builder.Property(x => x.EffectApplied).HasDefaultValue(false);
         builder.HasOne(x => x.AutomationJob).WithMany()
@@ -24,7 +28,7 @@ public class AutomationExecutionConfiguration : IEntityTypeConfiguration<Automat
         builder.HasIndex(x => new { x.WorkspaceId, x.OutcomeSequence }).IsUnique()
             .HasDatabaseName("UX_AutomationExecutions_Workspace_Outcome").HasFilter("\"OutcomeSequence\" IS NOT NULL");
         builder.HasIndex(x => new { x.WorkspaceId, x.FinishedAt })
-            .HasDatabaseName("IX_AutomationExecutions_Quotas").HasFilter("\"EffectApplied\"");
+            .HasDatabaseName("IX_AutomationExecutions_Quotas").HasFilter("\"EffectApplied\" AND \"IsAutomaticAttempt\"");
         builder.Property(x => x.StatusCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.ErrorMessage).HasMaxLength(10000);
         builder.Property(x => x.ContextJson).HasColumnType("jsonb");
@@ -46,7 +50,14 @@ public class AutomationExecutionConfiguration : IEntityTypeConfiguration<Automat
                     OR ("StatusCode" IN ('succeeded','failed','skipped','cancelled') AND "FinishedAt" IS NOT NULL)))
                 """);
             table.HasCheckConstraint("CK_AutomationExecutions_Effect", """
-                NOT "EffectApplied" OR ("StatusCode" = 'succeeded' AND "IsAutomaticAttempt" AND "OutcomeSequence" IS NOT NULL)
+                NOT "EffectApplied" OR ("StatusCode" = 'succeeded' AND
+                    (("IsAutomaticAttempt" AND "OutcomeSequence" IS NOT NULL)
+                    OR ("IsHumanApprovedAttempt" AND "OutcomeSequence" IS NULL)))
+                """);
+            table.HasCheckConstraint("CK_AutomationExecutions_Human", """
+                (NOT "IsHumanApprovedAttempt" AND "AutomationActionRequestId" IS NULL)
+                OR ("IsHumanApprovedAttempt" AND NOT "IsAutomaticAttempt" AND "AutomationActionRequestId" IS NOT NULL
+                    AND "AutomationJobId" IS NOT NULL AND "OutcomeSequence" IS NULL)
                 """);
             table.HasCheckConstraint("CK_AutomationExecutions_Outcome", """
                 "OutcomeSequence" IS NULL OR ("OutcomeSequence" > 0 AND "IsAutomaticAttempt"

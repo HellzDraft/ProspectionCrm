@@ -4,6 +4,6 @@ namespace ProspectionCrm.Api.Services;
 
 public interface IAutomationExecutionService
 {
-    Task<(IReadOnlyList<AutomationExecutionDto>? Items, string? Error)> GetAllAsync(Guid? automationRuleId = null, string? statusCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? automationJobId = null, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<AutomationExecutionDto>? Items, string? Error)> GetAllAsync(Guid? automationRuleId = null, string? statusCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? automationJobId = null, CancellationToken cancellationToken = default, Guid? automationActionRequestId = null);
     Task<AutomationExecutionDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 }

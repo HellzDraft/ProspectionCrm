@@ -13,7 +13,7 @@ public interface IAutomationJobProcessor
 
 public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomationJobQueue queue,
     AutomationRuntimeStore runtime, IAutomationActionExecutor executor, IOptions<AutomationWorkerOptions> options,
-    ILogger<AutomationJobProcessor> logger) : IAutomationJobProcessor
+    ILogger<AutomationJobProcessor> logger, AutomationActionRequestStore requests) : IAutomationJobProcessor
 {
     private bool? automaticAttempt;
 
@@ -68,6 +68,18 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
             && x.AttemptNumber == job.AttemptCount, token)) return (null, false);
 
         var input = await runtime.ReadAsync(job, true, token);
+        if (input.ActionRequest is { StatusCode: ActionRequestStatuses.Pending })
+        {
+            await requests.AwaitApprovalAsync(job, owner, input, token);
+            await tx.CommitAsync(token);
+            return (null, false);
+        }
+        if (input.ActionRequest is { StatusCode: not ActionRequestStatuses.Approved })
+        {
+            await RequireAsync(queue.FailAsync(job.WorkspaceId, job.Id, owner, AutomationJobErrors.ProcessingRejected, token));
+            await tx.CommitAsync(token);
+            return (null, false);
+        }
         if (input.Rule is null)
         {
             await RequireAsync(queue.FailAsync(job.WorkspaceId, job.Id, owner, AutomationJobErrors.ProcessingRejected, token));
@@ -94,7 +106,7 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
         {
             (string Reason, DateTimeOffset Until)? deferred = !settings.IsEnabled
                 ? (AutomationReasons.Disabled, runtime.Now.AddSeconds(options.Value.DeferredDelaySeconds))
-                : input.Evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic
+                : input.ActionRequest is null && input.Evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic
                     ? await runtime.DeferredAsync(settings, token) : null;
             if (deferred is { } blocked)
             {
@@ -103,13 +115,19 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
                 return (null, false);
             }
         }
+        if (!existing && AutomationActionRequestStore.NeedsDecision(input))
+        {
+            await requests.AwaitApprovalAsync(job, owner, input, token);
+            await tx.CommitAsync(token);
+            return (null, false);
+        }
         var execution = runtime.NewAttempt(job, input);
         db.AutomationExecutions.Add(execution);
         if (existing)
         {
-            execution.IsAutomaticAttempt = true;
+            execution.IsAutomaticAttempt = !execution.IsHumanApprovedAttempt;
             execution.EffectApplied = true;
-            execution.OutcomeSequence = await runtime.NextOutcomeAsync(job.WorkspaceId, token);
+            if (execution.IsAutomaticAttempt) execution.OutcomeSequence = await runtime.NextOutcomeAsync(job.WorkspaceId, token);
             runtime.Finish(execution, job, "succeeded", "effect-already-applied");
         }
         await db.SaveChangesAsync(token);
@@ -132,11 +150,25 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
         if (execution.StatusCode != "running") return false;
         var input = await runtime.ReadAsync(job, true, token);
         var evaluation = input.Evaluation;
-        execution.ActionTypeCode = AutomationActionCatalog.Find(input.Rule?.ActionTypeCode)?.TypeCode;
-        if (input.Settings is { } settings && (!settings.IsEnabled
-            || evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic))
+        var human = input.ActionRequest?.StatusCode == ActionRequestStatuses.Approved;
+        if (AutomationActionRequestStore.NeedsDecision(input))
         {
-            var deferred = await runtime.DeferredAsync(settings, token);
+            // The automatic gate changed after the provisional running checkpoint. No executor ran.
+            // Remove only this unexecuted checkpoint atomically with the new human wait.
+            db.AutomationExecutions.Remove(execution);
+            await db.SaveChangesAsync(token);
+            await requests.AwaitApprovalAsync(job, owner, input, token);
+            await tx.CommitAsync(token);
+            return false;
+        }
+        execution.ActionTypeCode = AutomationActionCatalog.Find(input.ActionRequest?.ActionTypeCode ?? input.Rule?.ActionTypeCode)?.TypeCode;
+        if (input.Settings is { } settings && (!settings.IsEnabled
+            || (!human && evaluation?.SafetyDecision?.DecisionCode == AutomationDecisions.Automatic)))
+        {
+            var deferred = human
+                ? (settings.IsEnabled ? null : ((string Reason, DateTimeOffset Until)?)(AutomationReasons.Disabled,
+                    runtime.Now.AddSeconds(options.Value.DeferredDelaySeconds)))
+                : await runtime.DeferredAsync(settings, token);
             if (deferred is { } blocked)
             {
                 // Only a change/race after the initial gates produces this one diagnostic.
@@ -156,19 +188,24 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
             && evaluation.ActionTypeCode == AutomationActionCatalog.CreateCrmTask;
         automaticAttempt = automatic;
         execution.IsAutomaticAttempt = automatic;
-        if (!automatic)
+        CreateCrmTaskPlan? approvedPlan = null;
+        var humanReason = human ? AutomationActionSnapshot.Validate(input.ActionRequest!, job, input.Rule, out approvedPlan) : null;
+        if (human && input.Settings is null) humanReason = "automation-settings-missing";
+        if (human && humanReason is not null)
+            runtime.Finish(execution, job, "skipped", humanReason);
+        else if (!automatic && !human)
             runtime.Finish(execution, job, "skipped", input.Rule is null ? "automation-rule-required"
                 : input.Settings is null ? "automation-settings-missing" : evaluation!.ReasonCode);
         else
         {
             // Recheck after settings/rule locks and immediately before asking the executor to mutate.
             await runtime.EnsureLeaseAsync(job, owner, token);
-            var result = await executor.ExecuteAsync(job, evaluation!.ActionPlan!, runtime.Now, token);
+            var result = await executor.ExecuteAsync(job, human ? approvedPlan! : evaluation!.ActionPlan!, runtime.Now, token);
             runtime.Finish(execution, job, result.Succeeded ? "succeeded" : "skipped", result.ReasonCode);
             if (result.Succeeded)
             {
                 execution.EffectApplied = true;
-                execution.OutcomeSequence = await runtime.NextOutcomeAsync(job.WorkspaceId, token);
+                if (automatic) execution.OutcomeSequence = await runtime.NextOutcomeAsync(job.WorkspaceId, token);
             }
         }
         await db.SaveChangesAsync(token);
@@ -218,7 +255,15 @@ public sealed class AutomationJobProcessor(ProspectionCrmDbContext db, IAutomati
                 await tx.CommitAsync(token);
                 return;
             }
-            execution = runtime.NewAttempt(job, new(rule, settings, null));
+            var request = await db.AutomationActionRequests.AsNoTracking().SingleOrDefaultAsync(
+                x => x.AutomationJobId == job.Id && x.WorkspaceId == job.WorkspaceId, token);
+            if (request is { StatusCode: ActionRequestStatuses.Pending })
+            {
+                await requests.AwaitApprovalAsync(job, owner, new(rule, settings, null, request), token);
+                await tx.CommitAsync(token);
+                return;
+            }
+            execution = runtime.NewAttempt(job, new(rule, settings, null, request));
             db.AutomationExecutions.Add(execution);
             if (settings is null)
             {

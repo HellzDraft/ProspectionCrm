@@ -5,6 +5,9 @@ public class AutomationExecutionDto
     public Guid Id { get; set; }
     public Guid AutomationRuleId { get; set; }
     public Guid? AutomationJobId { get; set; }
+    public Guid? AutomationActionRequestId { get; set; }
+    public bool IsAutomaticAttempt { get; set; }
+    public bool IsHumanApprovedAttempt { get; set; }
     public int? AttemptNumber { get; set; }
     public string? ActionTypeCode { get; set; }
     public string? ReasonCode { get; set; }
