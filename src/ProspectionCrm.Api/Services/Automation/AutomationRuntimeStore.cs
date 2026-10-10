@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Entities;
 
@@ -12,15 +11,10 @@ public sealed record AutomationRuntimeInput(AutomationRule? Rule, AutomationRunt
     AutomationEvaluationResult? Evaluation, AutomationActionRequest? ActionRequest = null);
 
 public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomationRuleEvaluator evaluator,
-    TimeProvider clock, IOptions<AutomationWorkerOptions> options)
+    TimeProvider clock, AutomationRuntimeGuard guard)
 {
     public DateTimeOffset Now => clock.GetUtcNow().ToUniversalTime();
-    public Task LockAsync(Guid workspace, CancellationToken token)
-    {
-        var key = $"automation-runtime:{workspace:N}";
-        return db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", token);
-    }
+    public Task LockAsync(Guid workspace, CancellationToken token) => AutomationRuntimeLock.AcquireAsync(db, workspace, token);
 
     public async Task<AutomationJob?> OwnAsync(AutomationJob claim, string owner, CancellationToken token)
     {
@@ -80,29 +74,8 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
             .MaxAsync(x => x.OutcomeSequence, token) ?? 0) + 1;
 
     // Must be called under the workspace advisory lock, and repeated in the mutation transaction.
-    public async Task<(string Reason, DateTimeOffset Until)?> DeferredAsync(
-        AutomationRuntimeSettings settings, CancellationToken token)
-    {
-        var now = Now;
-        if (!settings.IsEnabled) return (AutomationReasons.Disabled, now.AddSeconds(options.Value.DeferredDelaySeconds));
-        var outcomes = await db.AutomationExecutions.AsNoTracking()
-            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.IsAutomaticAttempt && x.OutcomeSequence != null)
-            .OrderByDescending(x => x.OutcomeSequence).Take(settings.MaxConsecutiveFailures)
-            .Select(x => x.EffectApplied).ToListAsync(token);
-        if (outcomes.Count == settings.MaxConsecutiveFailures && outcomes.All(x => !x))
-            return ("circuit-open", now.AddSeconds(options.Value.DeferredDelaySeconds));
-        var day = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
-        var effects = db.AutomationExecutions.AsNoTracking()
-            .Where(x => x.WorkspaceId == settings.WorkspaceId && x.IsAutomaticAttempt && x.EffectApplied);
-        var dayCount = await effects.CountAsync(x => x.FinishedAt >= day && x.FinishedAt < day.AddDays(1), token);
-        if (dayCount >= settings.MaxExecutionsPerDay) return ("daily-quota", day.AddDays(1));
-        var start = now.AddMinutes(-1);
-        var recent = await effects.Where(x => x.FinishedAt > start).OrderBy(x => x.FinishedAt)
-            .Select(x => x.FinishedAt!.Value).ToListAsync(token);
-        if (recent.Count >= settings.MaxExecutionsPerMinute)
-            return ("minute-quota", recent[recent.Count - settings.MaxExecutionsPerMinute].AddMinutes(1));
-        return null;
-    }
+    public Task<(string Reason, DateTimeOffset Until)?> DeferredAsync(
+        AutomationRuntimeSettings settings, CancellationToken token) => guard.DeferredAsync(settings, token);
 
     public AutomationExecution NewAttempt(AutomationJob job, AutomationRuntimeInput input)
     {
@@ -142,10 +115,8 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
 
     public async Task<int> AbandonAsync(Guid workspace, CancellationToken token)
     {
-        var abandoned = await (from execution in db.AutomationExecutions
+        var abandoned = await (from execution in AutomationExecutionQueries.Abandoned(db, workspace)
             join job in db.AutomationJobs on execution.AutomationJobId equals job.Id
-            where execution.WorkspaceId == workspace && execution.StatusCode == "running"
-                && (job.StatusCode != AutomationJobStatuses.Leased || execution.AttemptNumber != job.AttemptCount)
             orderby execution.StartedAt, execution.Id
             select new { Execution = execution, Job = job }).Take(100).ToListAsync(token);
         foreach (var item in abandoned) Finish(item.Execution, item.Job, "failed", "lease-expired");

@@ -45,7 +45,10 @@ public static class AutomationActionSnapshot
         return parsed is null ? null : new(opportunity, parsed.Title, parsed.Description, parsed.DueInDays);
     }
 
-    public static bool IsStale(AutomationActionRequest request, AutomationRule? rule) => rule is null
+    public static bool IsStale(AutomationActionRequest request, AutomationRule? rule) =>
+        DefinitionChanged(request, rule) || Parse(request.ActionPlanJson) is null;
+
+    private static bool DefinitionChanged(AutomationActionRequest request, AutomationRule? rule) => rule is null
         || rule.WorkspaceId != request.WorkspaceId || rule.Id != request.AutomationRuleId
         || Fingerprint(rule) is not { } fingerprint || fingerprint != request.RuleFingerprint;
 
@@ -56,7 +59,8 @@ public static class AutomationActionSnapshot
         if (request.StatusCode != ActionRequestStatuses.Approved) return ActionRequestCodes.Unavailable;
         if (request.WorkspaceId != job.WorkspaceId || request.AutomationJobId != job.Id
             || request.AutomationRuleId != job.AutomationRuleId) return ActionRequestCodes.Mismatch;
-        if (IsStale(request, rule)) return ActionRequestCodes.Stale;
+        // Keep the existing execution reason for an invalid approved plan; reads also flag it stale.
+        if (DefinitionChanged(request, rule)) return ActionRequestCodes.Stale;
         if (rule!.ArchivedAt is not null) return AutomationEvaluationReasons.RuleArchived;
         if (!rule.Enabled) return AutomationEvaluationReasons.RuleDisabled;
         if (request.ActionTypeCode != AutomationActionCatalog.CreateCrmTask || request.ActionTypeCode != rule.ActionTypeCode

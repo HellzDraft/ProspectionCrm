@@ -44,7 +44,7 @@ public sealed class AutomationSettingsExceptionAttribute : ExceptionFilterAttrib
     {
         if (context.Exception is OperationCanceledException && context.HttpContext.RequestAborted.IsCancellationRequested) return;
         context.HttpContext.RequestServices.GetRequiredService<ILogger<AutomationSettingsExceptionAttribute>>()
-            .LogError(context.Exception, "Automation settings request failed");
+            .LogError("Automation settings request failed: {ExceptionType}", context.Exception.GetType().Name);
         var problem = new ProblemDetails { Status = 500, Title = "Automation settings request failed", Detail = "The request could not be completed." };
         problem.Extensions["code"] = "AutomationSettingsInternalError";
         context.Result = new ObjectResult(problem) { StatusCode = 500, ContentTypes = { "application/problem+json" } };

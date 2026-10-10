@@ -1,5 +1,10 @@
 # Demandes d’action et décisions humaines — Phase 8.5
 
+> Extension Phase 8.6 : la [supervision](automation-supervision-v1.md) compte les
+> demandes et partage leur helper IsStale avec l’API. Un snapshot invalide est
+> désormais signalé stale, en plus des changements de définition. Les effets
+> humains continuent d’ignorer les quotas et le circuit automatiques.
+
 Migration : `20261009115938_Phase85AutomationActionRequests`.
 Le worker reste désactivé par défaut. Les migrations ne sont jamais appliquées
 au démarrage ; aucune migration automatique de la base Development.

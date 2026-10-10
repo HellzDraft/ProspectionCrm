@@ -23,7 +23,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class Phase6ReconstructionTests : IAsyncLifetime
 {
-    private const string LastMigration = "20261009115938_Phase85AutomationActionRequests";
+    private const string LastMigration = "20261009144211_Phase86AutomationCircuitResets";
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:18").Build();
     public Task InitializeAsync() => postgres.StartAsync();
     public Task DisposeAsync() => postgres.DisposeAsync().AsTask();

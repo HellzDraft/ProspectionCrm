@@ -1,5 +1,10 @@
 # Worker d’automatisation métier — Phase 8.4
 
+> Extension Phase 8.6 : [supervision et reset explicite du circuit](automation-supervision-v1.md).
+> Le guard partage désormais ses calculs avec la supervision. Les marqueurs de
+> reset excluent les anciens outcomes du circuit sans modifier les historiques,
+> les quotas ou AvailableAt. Le worker reste hébergé dans l’API et désactivé par défaut.
+
 > Extension Phase 8.5 : voir [demandes d’action et décisions humaines](automation-action-requests-v1.md).
 > Les détails et le rapport 8.4 ci-dessous décrivent la version de départ. Pour les
 > nouveaux traitements manual/assist, une demande persistante et un job

@@ -52,7 +52,8 @@ public abstract class AutomationRuntimeFixture(AutomationJobDatabase database) :
         change(rule); await db.SaveChangesAsync();
     }
     protected AutomationRuntimeStore Runtime(ProspectionCrmDbContext db, IAutomationRuleEvaluator? evaluator = null) =>
-        new(db, evaluator ?? new AutomationRuleEvaluator(new AutomationSafetyPolicy()), Clock, Options.Create(Config));
+        new(db, evaluator ?? new AutomationRuleEvaluator(new AutomationSafetyPolicy()), Clock,
+            new AutomationRuntimeGuard(db, new AutomationCircuitBreakerService(db, Clock), Clock, Options.Create(Config)));
     protected async Task<AutomationJob> Claim(Guid ws)
     {
         await using var db = Db(); return Assert.IsType<AutomationJob>(await Queue(db).ClaimAsync(ws, default));

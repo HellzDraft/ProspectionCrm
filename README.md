@@ -41,6 +41,12 @@ ni historique d’exécution. Approve remet le job en file ; le worker exécute 
 le snapshot approuvé. Les effets humains restent soumis au kill switch et sont
 exclus des quotas et du circuit automatiques. Aucun effet externe n’est ajouté.
 
+La Phase 8.6 ajoute la [supervision opérationnelle](docs/automation-supervision-v1.md),
+ses alertes calculées et le réarmement explicite, persistant et audité du circuit.
+Worker et supervision partagent les mêmes calculs de circuit et de quotas.
+Le worker reste dans l’API, désactivé par défaut ; aucun frontend ni effet externe.
+Voir l’[audit final de la Phase 8](docs/phase-8-final-audit.md).
+
 ## Installation locale
 
 ### 1. Prérequis et clone

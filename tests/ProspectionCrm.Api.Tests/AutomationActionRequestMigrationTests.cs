@@ -16,7 +16,7 @@ public sealed class AutomationActionRequestMigrationTests(AutomationJobDatabase 
     {
         await using var db = Db();
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(AutomationRuntimeMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         await db.GetService<IMigrator>().MigrateAsync(Previous);
         var legacy = await Prepare("manual");
         var historyId = Guid.NewGuid();
