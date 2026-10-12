@@ -16,6 +16,19 @@ n'est transmis à n8n. Aucun élargissement du binding API n'est nécessaire ici
 
 ## Vérifier sans exposer les secrets
 
+L'[audit 9.2.2](phase-9-2-step-2-validation.md) distingue la présence d'une
+ligne propriétaire de la fin de son initialisation, précise les contrôles
+interactifs et documente les flux réseau. Depuis cet audit initial, l'utilisateur
+rapporte avoir terminé l'initialisation du propriétaire, activé la 2FA et vérifié
+la reconnexion. Ce sont des validations interactives rapportées, pas des tests
+automatisés de l'agent ; ne pas recommencer l'initialisation ou réinitialiser la MFA.
+
+Le [parcours de sauvegarde chiffrée](n8n-encrypted-backups.md) a ensuite été éprouvé
+avec restic portable 0.19.1 sur une instance entièrement synthétique. Aucune archive
+réelle n'a été chiffrée, déplacée ou transférée. La sauvegarde réelle de 9.2.1
+**précède l'initialisation du propriétaire** : elle ne couvre pas l'état actuel.
+La destination protégée hors machine reste à choisir.
+
 Depuis la racine du dépôt, avec le même nom de projet Compose que l'installation :
 
 ```powershell
@@ -41,6 +54,12 @@ conteneur actif ne l'utilise. Avant tout démarrage d'une ancienne instance,
 inspecter hors ligne les nombres de workflows, credentials et exécutions :
 un workflow actif pourrait reprendre un traitement ou déclencher un appel externe.
 Ne pas afficher les noms, corps, tokens ou valeurs de clé.
+Contrôler aussi le marqueur `userManagement.isInstanceOwnerSetUp` et uniquement
+les nombres de propriétaires, propriétaires désactivés et propriétaires avec MFA.
+Une ligne `global:owner` seule ne prouve pas un compte utilisable. Si le marqueur
+est false, reporter les tests de connexion et organiser l'initialisation manuelle
+par le propriétaire, dans une session locale de confiance ; aucune réinitialisation.
+Ne pas interroger les colonnes de mot de passe, secret MFA ou codes de récupération.
 
 Pour SQLite, monter le volume en lecture seule dans un conteneur auxiliaire
 de la même image, avec `--network none`, et utiliser `node:sqlite` avec
@@ -81,7 +100,52 @@ sur l'image locale 2.40.7 pendant l'étape 9.2.1.
   Aucun VACUUM ni nettoyage manuel n'est prévu. Les réglages d'enregistrement
   propres aux workflows seront examinés avant de recevoir des données réelles.
 
+## Sessions de l'éditeur : configuration préparée en 9.2.2
+
+Compose déclare désormais `N8N_USER_MANAGEMENT_JWT_DURATION_HOURS="24"` et
+`N8N_USER_MANAGEMENT_JWT_REFRESH_TIMEOUT_HOURS="-1"`. Le chargeur réel de l'image
+2.40.7, exécuté sans réseau ni volume dans un auxiliaire, conserve les nombres
+24 et -1 après validation. Le code d'authentification confirme une durée de
+86 400 secondes et l'absence de renouvellement automatique d'un JWT encore valide.
+À l'inverse, 0 signifie une fenêtre de renouvellement de 25 % de la durée.
+
+**Ces valeurs ne sont pas appliquées au conteneur réel existant**, qui conserve
+sa configuration antérieure (défauts 168 h / fenêtre de 42 h). Aucun redémarrage
+ni recréation n'a été effectué pour les appliquer. Un simple `docker start`
+ne recharge pas les variables Compose. Leur application future nécessite une
+intervention validée, précédée d'une sauvegarde de l'état post-initialisation.
+La nouvelle durée concerne les jetons émis avec cette configuration ; elle
+ne prouve pas la révocation ou le raccourcissement des jetons déjà émis.
+
+Ni connexion automatisée ni expiration observée après 24 h : seul le chargement
+de configuration et le code ont été vérifiés. L'horloge n'a pas été modifiée.
+Clé n8n, secret JWT, compte, MFA et réglages de cookies restent inchangés.
+[Variables officielles de session](https://docs.n8n.io/hosting/configuration/environment-variables/user-management-smtp-2fa/).
+
+## Exigences réseau pour 9.3, sans implémentation
+
+- Maintenir l'exposition locale, sans ouverture publique. Le test historique
+  `host.docker.internal` atteint seulement un endpoint synthétique Windows ;
+  il ne valide ni Kestrel, ni TLS, ni les autorisations CRM. Dans cet environnement,
+  le loopback ne suffit pas à isoler l'hôte des conteneurs.
+- Utiliser HTTPS avec certificats validés pour les échanges comportant de vrais
+  secrets d'intégration. Aucun contournement de validation TLS. Les adresses HTTP
+  du premier audit restent des pistes de diagnostic sans secret.
+- Distinguer identité machine n8n et identité humaine CRM. Limiter la première
+  aux opérations d'intégration explicitement autorisées ; protéger séparément
+  les routes administratives, d'approbation et les autres routes CRM sensibles.
+- La 2FA de l'éditeur n8n n'authentifie ni l'API CRM ni ses webhooks.
+
+Aucun binding Kestrel, pare-feu, certificat, authentification ou webhook n'est
+modifié ici. Ces exigences restent à implémenter et tester dans une phase autorisée.
+
 ## Sauvegarde à froid
+
+Cette procédure produit une archive en clair. Avant tout futur transfert hors
+machine, appliquer la [procédure de chiffrement](n8n-encrypted-backups.md)
+après validation du stockage et de la garde du mot de passe réel. Le test
+synthétique ne constitue pas une sauvegarde opérationnelle hors machine.
+Les archives réelles de 9.2.1 restent inchangées dans le cadre de 9.2.2.
 
 1. Identifier le conteneur, son image exacte, son volume, sa politique de
    redémarrage et son état initial. Déterminer si la clé est dans le volume
@@ -148,7 +212,8 @@ valide le mécanisme de restauration, pas le déchiffrement de credentials réel
 
 Un démarrage de n8n existant ne doit intervenir qu'après examen des workflows
 et sauvegarde si une modification du conteneur est nécessaire. Pour appliquer
-la configuration n8n sans recréer PostgreSQL :
+la configuration n8n sans recréer PostgreSQL, lors d'une future intervention
+autorisée (commande non exécutée dans le complément 9.2.2) :
 
 ```powershell
 docker compose --profile integrations up -d --no-deps --pull never n8n

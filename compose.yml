@@ -27,6 +27,8 @@ services:
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_TEMPLATES_ENABLED: "false"
+      N8N_USER_MANAGEMENT_JWT_DURATION_HOURS: "24"
+      N8N_USER_MANAGEMENT_JWT_REFRESH_TIMEOUT_HOURS: "-1"
       # Explicit default retention; pruning affects execution history, not credentials.
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: "336"
