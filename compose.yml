@@ -18,9 +18,19 @@ services:
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.40.7
     profiles: [integrations]
+    # Recover bounded process failures without starting n8n on Docker startup.
+    restart: "on-failure:3"
     environment:
       # Local HTTP only; the published port is restricted to loopback.
       N8N_SECURE_COOKIE: "false"
+      # Local operation does not need telemetry, remote templates or update checks.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      # Explicit default retention; pruning affects execution history, not credentials.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "10000"
     ports:
       - "127.0.0.1:5678:5678"
     volumes:

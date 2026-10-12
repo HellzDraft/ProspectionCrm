@@ -22,6 +22,22 @@ Créer le compte propriétaire dans l'interface lors du premier accès.
 Les cookies non sécurisés sont autorisés uniquement pour cet usage HTTP local.
 Cette configuration n'est pas destinée à une exposition publique.
 
+Le [guide d'exploitation n8n](n8n-operations.md) décrit les contrôles sans secrets,
+la sauvegarde à froid, la restauration isolée et les limites de validation.
+La reprise `on-failure:3` est limitée aux sorties en erreur ; elle ne démarre
+pas n8n au redémarrage de Docker. Le healthcheck seul ne redémarre pas un
+processus encore vivant mais unhealthy. PostgreSQL conserve sa configuration.
+La télémétrie, les notifications de version et les templates distants sont
+désactivés. Cela ne constitue pas un filtrage réseau des futurs workflows.
+
+La rétention des exécutions est explicitée : pruning activé, âge de 336 heures
+(14 jours), seuil de 10 000 exécutions. Ces seuils reprennent les valeurs par
+défaut n8n ; ce n'est pas une garantie de conserver chaque exécution 14 jours
+si le seuil de nombre est atteint. Ne pas abaisser ces limites sans examiner
+l'historique et sauvegarder. Workflows et credentials ne sont pas concernés
+par ce pruning. Les données d'exécution peuvent contenir des informations
+sensibles ; leur sauvegarde doit être protégée aussi.
+
 n8n ne reçoit aucun identifiant PostgreSQL et n'a aucune connexion configurée
 vers la base métier. Les deux services partagent le réseau Compose par défaut :
 il ne s'agit pas d'une isolation réseau entre eux. Aucun workflow, provider
