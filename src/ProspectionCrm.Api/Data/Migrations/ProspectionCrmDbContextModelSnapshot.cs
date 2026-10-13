@@ -1494,6 +1494,155 @@ namespace ProspectionCrm.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_IntegrationAttempts_Active")
+                        .HasFilter("\"StatusCode\" = 'started'");
+
+                    b.HasIndex("OperationId", "Number")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationAttempts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrationAttempts_Completion", "(\"StatusCode\" = 'started') = (\"FinishedAt\" IS NULL)\nAND (\"FinishedAt\" IS NULL OR \"FinishedAt\" >= \"StartedAt\")");
+
+                            t.HasCheckConstraint("CK_IntegrationAttempts_Number", "\"Number\" > 0");
+
+                            t.HasCheckConstraint("CK_IntegrationAttempts_Status", "\"StatusCode\" IN ('started','acknowledged','failed','unknown')");
+                        });
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CommandMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProbeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommandMessageId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "StatusCode", "CreatedAt");
+
+                    b.ToTable("IntegrationOperations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrationOperations_Completion", "(\"StatusCode\" IN ('succeeded','failed')) = (\"CompletedAt\" IS NOT NULL)\nAND (\"CompletedAt\" IS NULL OR \"CompletedAt\" >= \"CreatedAt\")");
+
+                            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND \"Type\" = 'technical.probe'");
+
+                            t.HasCheckConstraint("CK_IntegrationOperations_Ids", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid\nAND \"CommandMessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid\nAND \"CorrelationId\" <> '00000000-0000-0000-0000-000000000000'::uuid\nAND \"ProbeId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_IntegrationOperations_Revision", "\"Revision\" >= 0");
+
+                            t.HasCheckConstraint("CK_IntegrationOperations_Status", "\"StatusCode\" IN ('pending','awaiting-result','result-received','succeeded','failed')");
+                        });
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationReceipt", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CanonicalContent")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MessageId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("ReceivedAt", "MessageId")
+                        .HasFilter("\"ProcessedAt\" IS NULL");
+
+                    b.ToTable("IntegrationReceipts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrationReceipts_Content", "octet_length(\"CanonicalContent\") BETWEEN 1 AND 4096");
+
+                            t.HasCheckConstraint("CK_IntegrationReceipts_Dates", "\"ProcessedAt\" IS NULL OR \"ProcessedAt\" >= \"ReceivedAt\"");
+
+                            t.HasCheckConstraint("CK_IntegrationReceipts_Hash", "\"ContentSha256\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_IntegrationReceipts_Id", "\"MessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                        });
+                });
+
             modelBuilder.Entity("ProspectionCrm.Api.Entities.Opportunity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3144,6 +3293,33 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationAttempt", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.IntegrationOperation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationOperation", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.IntegrationReceipt", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.IntegrationOperation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProspectionCrm.Api.Entities.Opportunity", b =>

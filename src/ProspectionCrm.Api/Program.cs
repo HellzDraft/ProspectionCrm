@@ -5,6 +5,7 @@ using ProspectionCrm.Api.Services.Collection;
 using ProspectionCrm.Api.Storage;
 using Serilog;
 using ProspectionCrm.Api.Services.Automation;
+using ProspectionCrm.Api.Services.Integrations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,7 @@ builder.Services.AddOptions<AutomationJobQueueOptions>()
 builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IntegrationStore>();
 builder.Services.AddOptions<AutomationWorkerOptions>()
     .Bind(builder.Configuration.GetRequiredSection(AutomationWorkerOptions.SectionName))
     .Validate(options => options.IsValid(), "AutomationWorker options are outside the supported bounds.")
