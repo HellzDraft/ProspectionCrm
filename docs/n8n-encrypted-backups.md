@@ -1,11 +1,23 @@
-# Sauvegardes chiffrées n8n — stratégie et validation synthétique 9.2.2
+# Sauvegardes chiffrées n8n — stratégie et validations 9.2.2 / 9.2.3
 
 ## Statut et choix
 
-**Parcours local validé sur données synthétiques ; sauvegarde réelle protégée
-hors machine non opérationnelle.** Le complément du 12 octobre 2026 a utilisé
+**État au 13 octobre 2026 : séquence restic réelle locale réussie par l'utilisateur,
+tar et manifeste restaurés identiques ; copie protégée hors machine non réalisée.**
+La restauration dans un second volume est validée après correction démontrée de
+l'extraction des mtime des répertoires. Le premier essai est conservé inchangé.
+Les sessions 24/-1 sont appliquées. L'utilisateur confirme sa reconnexion avec
+mot de passe et 2FA sur le n8n réel ; aucun test de connexion automatisé ou sur
+une instance restaurée n'en est déduit. L'inspection readonly du contrôle
+documentaire final constate séparément n8n et PostgreSQL arrêtés, code 0.
+Voir la [validation réelle 9.2.3](phase-9-2-step-3-validation.md#diagnostic-mtime-et-reprise-conditionnelle-du-13-octobre-2026)
+et la [confirmation humaine](phase-9-2-step-3-validation.md#confirmation-humaine-et-contrôle-documentaire-final).
+Le script opérateur a réussi et ne doit pas être relancé sur ce dépôt initialisé.
+
+Historique synthétique : le complément du 12 octobre 2026 a utilisé
 restic portable 0.19.1, restauré une archive synthétique identique, puis démarré
-et arrêté le n8n restauré isolé. Aucun volume ou backup réel n'a été manipulé.
+et arrêté le n8n restauré isolé. Aucun volume ou backup réel n'avait été manipulé
+pendant ce complément 9.2.2.
 
 Constat historique de l'audit initial : ni installation ni initialisation de dépôt
 restic, aucun chiffrement ni transfert ; `restic`, `age`, `7z` et `gpg` non trouvés
@@ -36,7 +48,10 @@ Sources : [format et cryptographie](https://restic.readthedocs.io/en/stable/100_
 
 1. **Volume n8n cohérent** : SQLite, WAL/SHM éventuels, configuration avec sa clé,
    données binaires et autres fichiers. Le tar créé sous Linux conserve les
-   métadonnées Unix malgré son stockage intermédiaire sur Windows.
+   UID/GID, modes et mtime en secondes entières malgré son stockage intermédiaire
+   sur Windows. Les fractions de seconde de la source n'ont pas été sauvegardées ;
+   cette précision est acceptée pour ce jalon local, sans annoncer une conservation
+   intégrale de toutes les métadonnées d'origine.
 2. **Secret de déchiffrement restic** : mot de passe long, aléatoire, distinct
    de la clé n8n, du compte propriétaire et du mot de passe PostgreSQL.
 3. **Manifeste non secret dans la sauvegarde** : date UTC, image/tag/identifiant
@@ -110,10 +125,12 @@ ni sept jours de fréquence ni six mois de conservation.
 
 ## Procédure future de sauvegarde
 
-**Non exécutée sur l'instance réelle.** L'utilisateur rapporte l'initialisation
-du propriétaire, la 2FA et la reconnexion. La capture réelle de 9.2.1 est
-antérieure ; créer une nouvelle sauvegarde post-initialisation lors d'une
-intervention autorisée, sans écraser cette référence historique.
+Cette procédure générale a servi à la première capture post-initialisation du
+13 octobre, sans écraser la référence 9.2.1. Le chiffrement, le contrôle restic et
+la restauration du tar/manifeste ont réussi dans le terminal de l'utilisateur.
+Le contrôle de la seconde copie extraite a réussi après finalisation des dates
+des répertoires, comme décrit dans le rapport 9.2.3. Les exemples ci-dessous ne sont pas une commande de reprise
+de cette opération déjà exécutée ; ne pas réinitialiser son dépôt.
 
 Prérequis : outil/version approuvés, destination locale hors dépôt Git, capacité
 disque suffisante, mot de passe gardé, arrêt n8n planifié et aucun autre writer.
@@ -186,7 +203,10 @@ de la bande passante ; elle n'est pas exécutée dans cette phase.
    préservés, n8n ensuite sous son utilisateur normal, sans réseau ni port publié.
 5. Vérifier intégrité SQLite, disponibilité, fichiers attendus et préservation
    de clé sans jamais en afficher la valeur. Des données synthétiques sont requises
-   pour la première démonstration. Aucune restauration réelle n'est autorisée ici.
+   pour la première démonstration. L'autorisation 9.2.3 a ensuite permis une copie
+   réelle exclusivement hors ligne dans un volume neuf, sans y démarrer n8n ;
+   son contrôle complet a réussi dans un second volume après la finalisation
+   des dates décrite ci-dessous. Le premier volume reste inchangé.
 6. Tester ultérieurement la récupération par l'opérateur depuis une autre machine,
    avec secret récupéré hors du poste original. Consigner seulement pass/fail,
    version, snapshot et durée ; ne pas conserver de sortie déchiffrée dans Git.
@@ -196,6 +216,51 @@ vérification applicative. Une restauration de credentials réels nécessiterait
 un protocole distinct sans appel fournisseur et sans extraction de leurs valeurs.
 [Contrôles](https://restic.readthedocs.io/en/stable/045_working_with_repos.html),
 [restauration](https://restic.readthedocs.io/en/stable/050_restore.html).
+
+## Finalisation des dates de répertoires vérifiée en 9.2.3
+
+Sur l'image locale 2.40.7, `/bin/tar` est BusyBox 1.37.0. Avec les membres de
+répertoire avant leurs enfants, `tar -xpf` rétablit leurs dates avant que la
+création des enfants ne les modifie. La reproduction synthétique confirme les
+écarts dès la fin de l'extraction, avant toute ouverture SQLite ; l'ordre inversé
+des membres synthétiques supprime ces écarts avec la même commande. L'option
+GNU `--delay-directory-restore` est refusée par l'outil disponible.
+
+La procédure démontrée conserve l'archive et l'extraction, puis finalise les
+mtime des seuls répertoires, enfants avant parents et racine `.` en dernier :
+
+1. Vérifier l'empreinte et inventorier l'archive sans extraire : chemins relatifs
+   canoniques, aucun doublon, lien ou type inattendu, mtime entières. Réserver un
+   volume neuf, refuser une collision et vérifier qu'il est vide.
+2. Extraire dans ce volume seulement, avec les droits ciblés décrits plus haut.
+   Vérifier tous les chemins, octets, UID/GID/modes et dates des fichiers avant
+   finalisation. À ce stade intermédiaire, seuls les écarts de mtime de
+   répertoires sont autorisés ; tout autre écart bloque.
+3. Pour chaque répertoire ordinaire existant, vérifier les composants du chemin
+   et l'absence de lien ; appliquer `/bin/touch -c -h -m -d @<secondes_archive> --
+   <chemin_vérifié>`. Le script passe les arguments séparément, sans interpolation
+   dans un shell. Aucun ajout de fichier, changement de droits ni valeur tirée
+   du volume réel. Vérifier inode, type, UID/GID/mode et atime avant/après `touch`.
+4. Refaire le contrôle complet sur montages readonly : mtime natives en
+   nanosecondes exactement égales à `secondes_archive × 1 000 000 000`, fichiers
+   identiques, SQLite intègre, configuration/clé comparées uniquement en mémoire.
+   Mesurer avant/après les contrôles pour vérifier l'absence de modification.
+
+Le tar réel utilise un en-tête de style GNU (`ustar ` suivi de ` \0`), avec
+mtime octales en secondes et sans extension PAX. Les fractions de seconde de
+la source sont perdues à la capture ; elles ne sont pas reconstituées. L'utilisateur
+accepte explicitement cette précision pour le jalon local. Le contrôle source
+historique était déjà en secondes entières. Aucune tolérance n'est ajoutée
+pour la restauration : un écart synthétique de 0,5 seconde est bien refusé.
+Le ctime du répertoire change normalement lors de la finalisation du mtime ;
+il ne s'agit pas d'un champ de référence conservé par cette archive.
+
+Cette correction existe dans les scripts locaux hors Git de l'opération 9.2.3,
+dont `mtime-tree-20261013.cjs` et `restore-corrected-20261013.ps1`. Ce dernier
+a déjà été exécuté et refuse ses noms désormais occupés : ne pas le relancer.
+La capture, le manifeste et le dépôt restic n'ont pas été modifiés. Les anciennes
+commandes synthétiques ci-dessous documentent leur essai historique ; à elles
+seules, elles ne valident pas les mtime de répertoires après extraction.
 
 ## Copie hors machine sans fournisseur imposé
 

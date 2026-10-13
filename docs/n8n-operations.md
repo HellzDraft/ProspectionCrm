@@ -23,11 +23,25 @@ rapporte avoir terminé l'initialisation du propriétaire, activé la 2FA et vé
 la reconnexion. Ce sont des validations interactives rapportées, pas des tests
 automatisés de l'agent ; ne pas recommencer l'initialisation ou réinitialiser la MFA.
 
-Le [parcours de sauvegarde chiffrée](n8n-encrypted-backups.md) a ensuite été éprouvé
-avec restic portable 0.19.1 sur une instance entièrement synthétique. Aucune archive
-réelle n'a été chiffrée, déplacée ou transférée. La sauvegarde réelle de 9.2.1
-**précède l'initialisation du propriétaire** : elle ne couvre pas l'état actuel.
-La destination protégée hors machine reste à choisir.
+Le [parcours de sauvegarde chiffrée](n8n-encrypted-backups.md) a d'abord été éprouvé
+avec restic portable 0.19.1 sur une instance entièrement synthétique. Le 13 octobre,
+l'utilisateur a ensuite chiffré une nouvelle capture réelle post-initialisation,
+vérifié le dépôt local et restauré un tar/manifeste identiques. Le [contrôle hors
+ligne réel](phase-9-2-step-3-validation.md#diagnostic-mtime-et-reprise-conditionnelle-du-13-octobre-2026)
+est maintenant validé après correction démontrée de l'extraction des dates de
+répertoires dans un second volume neuf. Fichiers, permissions, UID/GID, SQLite,
+propriétaire/MFA et clé sont conformes. Les mtime correspondent exactement aux
+secondes enregistrées dans l'archive, qui ne conserve pas les fractions de la source.
+Cette précision est acceptée par l'utilisateur pour ce jalon local ; elle ne
+constitue pas une conservation intégrale des métadonnées d'origine.
+Les sessions 24/-1 sont appliquées. L'utilisateur confirme ensuite sa reconnexion
+avec mot de passe et 2FA sur le n8n réel ; ce contrôle interactif n'est pas un
+test automatisé ni une connexion sur une instance restaurée. Le
+[contrôle documentaire final](phase-9-2-step-3-validation.md#confirmation-humaine-et-contrôle-documentaire-final)
+constate séparément n8n et PostgreSQL arrêtés, sans changer leur état.
+Le script opérateur réussi ne doit pas être relancé. La sauvegarde réelle de 9.2.1
+**précède l'initialisation du propriétaire** et reste une référence historique.
+Aucune copie hors machine réalisée ; sa destination reste à choisir.
 
 Depuis la racine du dépôt, avec le même nom de projet Compose que l'installation :
 
@@ -100,7 +114,7 @@ sur l'image locale 2.40.7 pendant l'étape 9.2.1.
   Aucun VACUUM ni nettoyage manuel n'est prévu. Les réglages d'enregistrement
   propres aux workflows seront examinés avant de recevoir des données réelles.
 
-## Sessions de l'éditeur : configuration préparée en 9.2.2
+## Sessions de l'éditeur : préparation 9.2.2 et application 9.2.3
 
 Compose déclare désormais `N8N_USER_MANAGEMENT_JWT_DURATION_HOURS="24"` et
 `N8N_USER_MANAGEMENT_JWT_REFRESH_TIMEOUT_HOURS="-1"`. Le chargeur réel de l'image
@@ -109,16 +123,27 @@ Compose déclare désormais `N8N_USER_MANAGEMENT_JWT_DURATION_HOURS="24"` et
 86 400 secondes et l'absence de renouvellement automatique d'un JWT encore valide.
 À l'inverse, 0 signifie une fenêtre de renouvellement de 25 % de la durée.
 
-**Ces valeurs ne sont pas appliquées au conteneur réel existant**, qui conserve
-sa configuration antérieure (défauts 168 h / fenêtre de 42 h). Aucun redémarrage
-ni recréation n'a été effectué pour les appliquer. Un simple `docker start`
-ne recharge pas les variables Compose. Leur application future nécessite une
-intervention validée, précédée d'une sauvegarde de l'état post-initialisation.
+**Ces valeurs sont appliquées depuis le 13 octobre 2026.** Après sauvegarde
+chiffrée, restauration hors ligne et contrôles complets, seul n8n a été recréé
+avec `docker compose --profile integrations up -d --no-deps --pull never n8n`.
+Les deux variables sont les seules différences d'environnement effectif ; image,
+volume, réseau et exposition locale restent identiques. Santé `healthy` et
+readiness HTTP 200 vérifiées, puis n8n arrêté pour rétablir l'état initial.
+PostgreSQL est resté arrêté, sans modification.
 La nouvelle durée concerne les jetons émis avec cette configuration ; elle
 ne prouve pas la révocation ou le raccourcissement des jetons déjà émis.
 
-Ni connexion automatisée ni expiration observée après 24 h : seul le chargement
-de configuration et le code ont été vérifiés. L'horloge n'a pas été modifiée.
+Le 13 octobre 2026, l'utilisateur confirme que la reconnexion avec son mot de
+passe et sa 2FA fonctionne après cette application. Validation interactive
+confirmée par l'utilisateur, sans test automatisé ni nouvelle connexion demandée.
+L'état arrêté n'est pas déduit de cette confirmation : inspection readonly à
+`2026-10-13T12:48:09.9674160Z`, les deux services sont `exited`, code 0.
+Les horodatages n8n ont changé depuis l'application ; PostgreSQL conserve les
+siens. Le rapport distingue cette observation des précédents tests `healthy` et
+HTTP 200, qui n'ont pas été rejoués pendant le contrôle documentaire.
+
+Ni connexion automatisée ni expiration observée après 24 h. La révocation globale
+des anciens jetons n'est pas démontrée. L'horloge n'a pas été modifiée.
 Clé n8n, secret JWT, compte, MFA et réglages de cookies restent inchangés.
 [Variables officielles de session](https://docs.n8n.io/hosting/configuration/environment-variables/user-management-smtp-2fa/).
 
@@ -166,6 +191,12 @@ Les archives réelles de 9.2.1 restent inchangées dans le cadre de 9.2.2.
    associée aux credentials sauvegardés.
 7. Ne relancer que les services qui doivent fonctionner après l'intervention.
 
+Précision constatée dans le tar créé par BusyBox 1.37.0 de cette image : mtime
+en secondes entières, sans extension PAX sub-seconde. La capture ne conserve donc
+pas les fractions de la source. Ne pas présenter le contrôle en secondes comme
+une égalité de timestamps natifs à la nanoseconde ; voir la
+[procédure de finalisation après extraction](n8n-encrypted-backups.md#finalisation-des-dates-de-répertoires-vérifiée-en-923).
+
 Le dossier `/backups/` à la racine du dépôt est ignoré par Git, mais cela ne le
 chiffre pas. Les archives contiennent la clé et potentiellement des données
 personnelles : limiter les accès locaux, utiliser un stockage chiffré approprié
@@ -178,10 +209,16 @@ ne garantit pas sa confidentialité et ne protège pas un ajout forcé (`git add
 
 ## Restauration et installation vierge isolées
 
-Aucune restauration ne doit cibler les volumes réels pendant cette phase.
-Les essais utilisent exclusivement des données synthétiques, de nouveaux volumes
+Aucune restauration ne doit cibler les volumes réels d'exploitation.
+Les essais décrits ci-dessous sont ceux des étapes 9.2.1/9.2.2 : exclusivement
+des données synthétiques, de nouveaux volumes
 nommés et étiquetés, et l'image 2.40.7 déjà présente (`--pull never` si applicable).
 Vérifier l'absence des noms avant création et arrêter si un nom est déjà utilisé.
+Les deux copies réelles de contrôle créées séparément en 9.2.3 sont sensibles et
+conservées hors ligne ; aucun n8n n'y est démarré. Le premier échec de dates, sa
+reproduction et la restauration corrigée sont consignés dans le
+[rapport 9.2.3](phase-9-2-step-3-validation.md#diagnostic-mtime-et-reprise-conditionnelle-du-13-octobre-2026).
+L'étape de démarrage ci-dessous ne s'applique pas à ces copies réelles.
 
 1. Démarrer n8n sur un volume vierge avec `--network none`, sans publier de port,
    sans credentials ni workflow et avec les services distants désactivés.
