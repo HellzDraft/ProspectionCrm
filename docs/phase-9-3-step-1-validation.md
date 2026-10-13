@@ -203,3 +203,66 @@ sonde avec reprise des tentatives incertaines. La 2FA de l'éditeur n8n ne rempl
 pas ces protections. Aucun branchement ne découle de la seule présence de ces tables.
 
 Aucun staging, commit ou push pendant l'implémentation locale initiale.
+
+## CI #58 et correction ciblée du test historique — 13 octobre 2026
+
+État initial du correctif : branche `main`, HEAD
+`b5d1f3d7de99259099bdbab16a923a9dbc4a387e`, working tree propre et index vide.
+Les résultats locaux et le périmètre du commit initial ci-dessus sont conservés
+comme constats historiques.
+
+La [CI Build #58](https://github.com/HellzDraft/ProspectionCrm/actions/runs/38418301282),
+run `38418301282`, job `115368542782`, est terminée **en échec** sur ce SHA.
+Le statut et le journal du job ont été lus : compilation réussie (0 erreur,
+2 avertissements), **1 259 tests réussis, 1 échec, 0 ignoré, 1 260 au total**.
+Ces chiffres concernent la suite CI, distincte des 77 tests locaux ciblés décrits
+plus haut ; ils ne constituent pas une validation globale réussie.
+
+L'unique échec concerne `IngestionHistoryTests.FreshReconstructionHasNoPendingMigrationOrModelChange`,
+ligne 476 de `tests/ProspectionCrm.Api.Tests/IngestionHistoryTests.cs`.
+L'attente utilisait encore `AutomationRuntimeMigrationTests.Current`, soit
+`20261009144211_Phase86AutomationCircuitResets`, alors que la reconstruction
+complète applique désormais `20261013143800_Phase931IntegrationPersistence`.
+
+Avant modification, cet échec a été reproduit en Release sur PostgreSQL 18
+jetable : 1 test exécuté, 1 échec sur la même comparaison, code de sortie 1.
+
+```powershell
+dotnet test tests/ProspectionCrm.Api.Tests/ProspectionCrm.Api.Tests.csproj --configuration Release --no-restore --filter 'FullyQualifiedName=ProspectionCrm.Api.Tests.IngestionHistoryTests.FreshReconstructionHasNoPendingMigrationOrModelChange' --logger 'console;verbosity=minimal'
+```
+
+La correction remplace uniquement la référence attendue par
+`IntegrationPersistenceMigrationTests.Current`. L'assertion d'égalité explicite
+reste présente, ainsi que les assertions de base vierge, d'absence de migration
+en attente, d'absence de changement du modèle EF et de vacuité des tables
+`SourceExecutionItems` et `SourceExecutionItemSources`. Aucun test ignoré,
+assertion supprimée ou comparaison d'une valeur avec elle-même.
+
+La recherche ciblée des autres attentes de dernière migration ne révèle pas
+d'autre référence obsolète. Les références historiques à la 8.6 sont conservées :
+borne des scénarios de montée/descente dans `IntegrationPersistenceMigrationTests`
+et avant-dernière migration de la chaîne dans `SourceCollectionJobMigrationTests`.
+
+Vérification après correction, avec compilation du projet API et des tests en
+Release, puis exécution des deux classes sur des bases PostgreSQL 18 jetables :
+
+```powershell
+dotnet test tests/ProspectionCrm.Api.Tests/ProspectionCrm.Api.Tests.csproj --configuration Release --no-restore --filter 'FullyQualifiedName~ProspectionCrm.Api.Tests.IngestionHistoryTests|FullyQualifiedName~ProspectionCrm.Api.Tests.IntegrationPersistenceMigrationTests' --logger 'console;verbosity=minimal'
+```
+
+Résultat : **19/19 tests réussis, 0 échec, 0 ignoré**, durée affichée 1 min 46 s,
+code de sortie 0. Cela couvre les 18 cas d'`IngestionHistoryTests` et le test de
+migration 9.3.1 : base vierge, montée depuis la 8.6 peuplée, descente/remontée,
+conservation des données existantes, absence de migration en attente et cohérence
+du modèle EF. Ce passage ciblé ne remplace pas une nouvelle exécution globale.
+
+Périmètre final du correctif : ce rapport et `IngestionHistoryTests.cs`, uniquement.
+`git diff --check` réussi ; branche et HEAD inchangés, index vide, aucun fichier
+non suivi ajouté. Les autres assertions du test et le contenu historique du
+rapport sont conservés.
+
+**La validation définitive de 9.3.1 reste attendue dans une nouvelle CI réussie
+après le futur commit correctif.** La suite complète locale n'est pas relancée.
+Aucun changement métier, de migration ou de workflow ; aucune migration sur
+Development, aucune manipulation de n8n réel ou des sauvegardes. Aucun staging,
+commit ou push dans cette correction, aucune Phase 9.3.2 engagée.
