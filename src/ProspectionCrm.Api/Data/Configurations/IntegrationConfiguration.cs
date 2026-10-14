@@ -18,6 +18,7 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Revision).IsConcurrencyToken();
         b.ToTable("IntegrationOperations", t =>
         {
+            t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
             t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND \"Type\" = 'technical.probe'");
             t.HasCheckConstraint("CK_IntegrationOperations_Status", "\"StatusCode\" IN ('pending','awaiting-result','result-received','succeeded','failed')");
             t.HasCheckConstraint("CK_IntegrationOperations_Revision", "\"Revision\" >= 0");

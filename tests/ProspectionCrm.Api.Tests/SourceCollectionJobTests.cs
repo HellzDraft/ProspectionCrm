@@ -30,7 +30,7 @@ public sealed class SourceCollectionJobTests : PersistentSourceIdentityFixture
     }
     private readonly NoNetwork transport = new();
     private WebApplicationFactory<Program> Factory(params IInterceptor[] interceptors) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .ConfigureServices(services =>
             {

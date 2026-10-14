@@ -74,7 +74,7 @@ public sealed class SourceCollectionWorkerLifecycleTests
     [InlineData("LeaseDurationSeconds", "3601")]
     public void InvalidOptionsFailAtApplicationStartup(string key, string value)
     {
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting($"SourceCollectionWorker:{key}", value));
         Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
     }

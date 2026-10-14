@@ -34,7 +34,7 @@ public sealed class PipelineStageOrderTests : IAsyncLifetime
         db.Pipelines.Add(pipeline);
         await db.SaveChangesAsync();
         pipelineId = pipeline.Id;
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder => builder
             .UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     }
@@ -50,7 +50,7 @@ public sealed class PipelineStageOrderTests : IAsyncLifetime
     private ProspectionCrmDbContext CreateContext() => new(
         new DbContextOptionsBuilder<ProspectionCrmDbContext>().UseNpgsql(postgres.GetConnectionString()).Options);
 
-    private static PipelineStageService Service(ProspectionCrmDbContext db) => new(db, new CurrentWorkspaceProvider(db));
+    private static PipelineStageService Service(ProspectionCrmDbContext db) => new(db, new TestWorkspaceProvider(db));
 
     private async Task<PipelineStage[]> SeedAsync(params int[] positions)
     {

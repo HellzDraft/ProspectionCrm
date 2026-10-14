@@ -21,7 +21,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class IngestionHistoryReadTests : PersistentSourceIdentityFixture
 {
-    private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> Factory() => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString()));
     private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     private static string Execution(Guid id) => $"/api/source-executions/{id}";
@@ -92,7 +92,7 @@ public sealed class IngestionHistoryReadTests : PersistentSourceIdentityFixture
         var items = await Get<SourceExecutionItemsPageDto>(client, Execution(execution) + "/items");
         Assert.False(items.HistoryAvailable); Assert.Equal(0, items.TotalCount); Assert.Empty(items.Items); Assert.False(items.HasMore);
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal(IntegrationPersistenceMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(IntegrationSecurityMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
     }
 
     [Fact]

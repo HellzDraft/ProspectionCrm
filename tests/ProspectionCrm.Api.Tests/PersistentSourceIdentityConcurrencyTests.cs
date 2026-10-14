@@ -39,7 +39,7 @@ public sealed class PersistentSourceIdentityConcurrencyTests : PersistentSourceI
         var ingestion = new IngestionService(ingestionDb, new FixedWorkspace(setup.Workspace), NullLogger<IngestionService>.Instance)
             .IngestAsync(setup.Search, new() { PipelineStageId = setup.Stage, Items = [Item(company: "Studio")] }, token);
         await gate.Reached.Task.WaitAsync(token);
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
         var write = operation switch

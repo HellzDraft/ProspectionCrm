@@ -5,6 +5,7 @@ public sealed class IntegrationOperation
 {
     public Guid Id { get; set; }
     public Guid WorkspaceId { get; set; }
+    public Guid? ConnectionId { get; set; }
     public Guid CommandMessageId { get; set; }
     public Guid CorrelationId { get; set; }
     public Guid ProbeId { get; set; }

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using ProspectionCrm.Api.Security;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Services;
 using ProspectionCrm.Api.Services.Collection;
@@ -7,7 +9,8 @@ using Serilog;
 using ProspectionCrm.Api.Services.Automation;
 using ProspectionCrm.Api.Services.Integrations;
 
-var builder = WebApplication.CreateBuilder(args);
+var provisionOperator = args.Contains("--provision-operator", StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(provisionOperator ? [] : args);
 
 builder.Services.AddSerilog((services, configuration) => configuration
     .ReadFrom.Configuration(builder.Configuration)
@@ -19,7 +22,9 @@ builder.Services.AddDbContext<ProspectionCrmDbContext>(options =>
         ?? throw new InvalidOperationException(
             "Configurez ConnectionStrings:DefaultConnection avec User Secrets ou une variable d'environnement.")));
 
-builder.Services.AddControllers();
+// Includes the standard MVC antiforgery authorization filters (no view endpoints are mapped).
+builder.Services.AddControllersWithViews();
+builder.Services.AddCrmSecurity(builder.Configuration);
 builder.Services.AddOptions<FileStorageOptions>()
     .Bind(builder.Configuration.GetRequiredSection(FileStorageOptions.SectionName))
     .Validate(options => !string.IsNullOrWhiteSpace(options.RootPath), "FileStorage:RootPath is required.")
@@ -38,6 +43,13 @@ builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IntegrationStore>();
+builder.Services.AddOptions<IntegrationOptions>().Bind(builder.Configuration.GetSection("Integrations"))
+    .Validate<IOptions<OperatorOptions>>((options, human) => options.IsValid(human.Value), "Invalid integration security configuration.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IntegrationSendGate>();
+builder.Services.AddScoped<IntegrationProbeService>();
+builder.Services.AddHttpClient<IntegrationTransport>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(IntegrationTransport.CreateHandler);
 builder.Services.AddOptions<AutomationWorkerOptions>()
     .Bind(builder.Configuration.GetRequiredSection(AutomationWorkerOptions.SectionName))
     .Validate(options => options.IsValid(), "AutomationWorker options are outside the supported bounds.")
@@ -125,32 +137,37 @@ builder.Services.AddScoped<IAiPromptTemplateService, AiPromptTemplateService>();
 builder.Services.AddScoped<IActivityEntryService, ActivityEntryService>();
 builder.Services.AddOpenApi();
 
-if (builder.Environment.IsDevelopment())
-{
-    builder.Services.AddCors(options =>
-        options.AddPolicy("BlazorDevelopment", policy =>
-            policy.WithOrigins("http://localhost:5054", "https://localhost:7075")
-                .WithMethods("GET", "POST", "PUT", "DELETE")
-                .AllowAnyHeader()));
-}
-
 var app = builder.Build();
 
+if (provisionOperator)
+{
+    await OperatorProvisioning.RunAsync(app.Services, args);
+    return;
+}
+
 app.UseSerilogRequestLogging();
+app.Use(async (context, next) =>
+{
+    if (!context.Request.IsHttps) { context.Response.StatusCode = 400; return; }
+    try { await next(context); }
+    catch (UnauthorizedAccessException) { context.Response.StatusCode = 403; }
+    catch (IntegrationAccessException) { context.Response.StatusCode = 403; }
+    catch (ProspectionCrm.Api.Dtos.Integrations.IntegrationContractException)
+    { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { error = "invalid-integration-envelope" }); }
+    catch (IntegrationConflictException error)
+    { context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
+});
 
 if (app.Environment.IsDevelopment())
 {
 	app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors("BlazorDevelopment");
-}
-
+app.UseRouting();
+app.UseCors("Blazor");
+app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

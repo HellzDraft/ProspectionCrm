@@ -15,5 +15,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <ProjectReference Include="../../src/ProspectionCrm.Api/ProspectionCrm.Api.csproj" />
+    <ProjectReference Include="../../src/ProspectionCrm.Blazor/ProspectionCrm.Blazor.csproj" Aliases="Blazor" />
   </ItemGroup>
 </Project>

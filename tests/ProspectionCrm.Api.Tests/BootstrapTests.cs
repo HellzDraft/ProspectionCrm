@@ -35,7 +35,7 @@ public sealed class BootstrapTests : IAsyncLifetime
     [Fact]
     public async Task HttpBootstrapCreatesOnlyOwnerAndWorkspaceAndIsIdempotent()
     {
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(builder =>
             builder.UseEnvironment("Testing")
                 .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
@@ -57,7 +57,7 @@ public sealed class BootstrapTests : IAsyncLifetime
         Assert.Equal(new BootstrapDto(owner.Id, BootstrapDefaults.OwnerEmail,
             BootstrapDefaults.OwnerDisplayName, workspace.Id, BootstrapDefaults.WorkspaceName,
             BootstrapDefaults.TimeZoneId), created);
-        Assert.Equal(workspace.Id, await new CurrentWorkspaceProvider(db).GetCurrentWorkspaceIdAsync());
+        Assert.Equal(workspace.Id, await new TestWorkspaceProvider(db).GetCurrentWorkspaceIdAsync());
 
         using var second = await client.PostAsync("/api/setup/bootstrap", null);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
@@ -131,7 +131,7 @@ public sealed class BootstrapTests : IAsyncLifetime
             });
         await db.SaveChangesAsync();
         var before = await SnapshotAsync(db);
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(builder =>
             builder.UseEnvironment("Testing")
                 .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });

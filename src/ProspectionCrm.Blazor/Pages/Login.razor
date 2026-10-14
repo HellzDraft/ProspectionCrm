@@ -1,0 +1,29 @@
+@page "/login"
+@inject ProspectionCrm.Blazor.Services.SessionService Session
+@inject NavigationManager Navigation
+
+<h1>Connexion</h1>
+<p>Accès à l’espace de l’opérateur local.</p>
+<form @onsubmit="LoginAsync" @onsubmit:preventDefault>
+    <label for="operator-password">Mot de passe</label>
+    <input id="operator-password" type="password" autocomplete="current-password" @bind="password" maxlength="256" required />
+    <button type="submit" disabled="@busy">Se connecter</button>
+</form>
+@if (error is not null) { <p role="alert">@error</p> }
+
+@code {
+    private string password = "";
+    private string? error;
+    private bool busy;
+    private async Task LoginAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (await Session.LoginAsync(password)) Navigation.NavigateTo("/");
+            else error = "Connexion refusée. Vérifiez le mot de passe ou réessayez plus tard.";
+        }
+        catch (HttpRequestException) { error = "Connexion indisponible. Réessayez plus tard."; }
+        finally { password = ""; busy = false; }
+    }
+}

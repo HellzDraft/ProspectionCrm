@@ -29,7 +29,7 @@ public abstract class AutomationSupervisionFixture(AutomationJobDatabase databas
     protected async Task<AutomationCircuitResetResult> Reset(Guid workspace, string? note = null)
     {
         await using var db = Db();
-        var result = await new AutomationCircuitBreakerService(db, Clock).ResetAsync(workspace, new() { Note = note }, default);
+        var result = await new AutomationCircuitBreakerService(db, Clock).ResetAsync(workspace, new() { Note = note }, new TestHumanActor(db, workspace), default);
         Assert.Equal(200, result.Status); return Assert.IsType<AutomationCircuitResetResult>(result.Value);
     }
     protected async Task<AutomationSupervisionDto> Supervise(Guid workspace)

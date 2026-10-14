@@ -8,24 +8,25 @@ using ProspectionCrm.Api.Entities;
 namespace ProspectionCrm.Api.Services.Integrations;
 
 public sealed class IntegrationConflictException(string code) : Exception(code);
+public sealed class IntegrationAccessException() : Exception("integration-forbidden");
 public enum IntegrationTransportOutcome { Acknowledged, Failed, Unknown }
 public enum IntegrationReception { Recorded, AlreadyRecorded }
 
-// Internal persistence only: no controller, transport, worker or business executor calls this store.
 // All updates use untracked reads and SQL in their own transaction; no unrelated tracked changes are saved.
 public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock)
 {
-    public async Task<IntegrationOperation> CreateProbeAsync(Guid workspaceId, CancellationToken token = default)
+    public async Task<IntegrationOperation> CreateProbeAsync(Guid workspaceId, Guid? connectionId = null, CancellationToken token = default)
     {
         if (workspaceId == Guid.Empty) throw new ArgumentException("workspace-required", nameof(workspaceId));
-        var op = new IntegrationOperation { Id = Guid.NewGuid(), WorkspaceId = workspaceId,
+        if (connectionId == Guid.Empty) throw new ArgumentException("connection-required", nameof(connectionId));
+        var op = new IntegrationOperation { Id = Guid.NewGuid(), WorkspaceId = workspaceId, ConnectionId = connectionId,
             CommandMessageId = Guid.NewGuid(), CorrelationId = Guid.NewGuid(), ProbeId = Guid.NewGuid(),
             Version = IntegrationContracts.Version, Type = IntegrationContracts.ProbeType,
             StatusCode = "pending", CreatedAt = Now() };
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "IntegrationOperations"
-                ("Id","WorkspaceId","CommandMessageId","CorrelationId","ProbeId","Version","Type","StatusCode","Revision","CreatedAt")
-            VALUES ({op.Id},{op.WorkspaceId},{op.CommandMessageId},{op.CorrelationId},{op.ProbeId},{op.Version},{op.Type},'pending',0,{op.CreatedAt})
+                ("Id","WorkspaceId","ConnectionId","CommandMessageId","CorrelationId","ProbeId","Version","Type","StatusCode","Revision","CreatedAt")
+            VALUES ({op.Id},{op.WorkspaceId},{op.ConnectionId},{op.CommandMessageId},{op.CorrelationId},{op.ProbeId},{op.Version},{op.Type},'pending',0,{op.CreatedAt})
             """, token);
         return op;
     }
@@ -78,21 +79,20 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
         await transaction.CommitAsync(token);
     }
 
-    public async Task<IntegrationReception> ReceiveAsync(string json, CancellationToken token = default)
+    public async Task<IntegrationReception> ReceiveAsync(IntegrationAccess access, string json, CancellationToken token = default)
     {
         var envelope = IntegrationContracts.ParseResult(json);
         var canonical = IntegrationContracts.Serialize(envelope);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var existing = await ReceiptAsync(envelope.MessageId, token);
-        if (existing is not null) return Duplicate(existing, canonical, hash);
-
-        // No workspace or business destination is accepted from the sender.
+        // Authorize under the operation lock BEFORE every duplicate/conflict branch.
         var op = await db.IntegrationOperations.FromSqlInterpolated($"""
-            SELECT * FROM "IntegrationOperations" WHERE "Id" = {envelope.OperationId} FOR UPDATE
-            """).AsNoTracking().SingleOrDefaultAsync(token) ?? throw Conflict("operation-not-found");
+            SELECT * FROM "IntegrationOperations" WHERE "Id" = {envelope.OperationId}
+                AND "WorkspaceId" = {access.WorkspaceId} AND "ConnectionId" = {access.ConnectionId} FOR UPDATE
+            """).AsNoTracking().SingleOrDefaultAsync(token) ?? throw new IntegrationAccessException();
+        if (access.ConnectionId == Guid.Empty || access.WorkspaceId == Guid.Empty) throw new IntegrationAccessException();
         // Another receiver may have committed while this transaction was waiting for the row lock.
-        existing = await ReceiptAsync(envelope.MessageId, token);
+        var existing = await AuthorizedReceiptAsync(access, envelope.MessageId, token);
         if (existing is not null) return Duplicate(existing, canonical, hash);
         Match(op, envelope);
         if (op.StatusCode != "awaiting-result") throw Conflict("operation-state-conflict");
@@ -103,7 +103,7 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
             ON CONFLICT ("MessageId") DO NOTHING
             """, token);
         if (inserted == 0)
-            return Duplicate(await ReceiptAsync(envelope.MessageId, token) ?? throw Conflict("receipt-concurrency-conflict"), canonical, hash);
+            return Duplicate(await AuthorizedReceiptAsync(access, envelope.MessageId, token) ?? throw Conflict("receipt-concurrency-conflict"), canonical, hash);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE "IntegrationOperations" SET "StatusCode" = 'result-received', "Revision" = "Revision" + 1 WHERE "Id" = {op.Id}
             """, token);
@@ -142,8 +142,14 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
         await transaction.CommitAsync(token);
     }
 
-    private Task<IntegrationReceipt?> ReceiptAsync(Guid messageId, CancellationToken token) =>
-        db.IntegrationReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.MessageId == messageId, token);
+    private async Task<IntegrationReceipt?> AuthorizedReceiptAsync(IntegrationAccess access, Guid messageId, CancellationToken token)
+    {
+        var receipt = await db.IntegrationReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.MessageId == messageId, token);
+        if (receipt is not null && !await db.IntegrationOperations.AnyAsync(x => x.Id == receipt.OperationId
+            && x.WorkspaceId == access.WorkspaceId && x.ConnectionId == access.ConnectionId, token))
+            throw new IntegrationAccessException();
+        return receipt;
+    }
 
     private async Task<IntegrationOperation> LockAsync(Guid workspaceId, Guid operationId, CancellationToken token) =>
         await db.IntegrationOperations.FromSqlInterpolated($"""

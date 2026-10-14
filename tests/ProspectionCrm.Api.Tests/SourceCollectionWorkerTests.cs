@@ -40,7 +40,7 @@ public sealed class SourceCollectionWorkerTests : PersistentSourceIdentityFixtur
     private readonly Transport transport = new();
     private WebApplicationFactory<Program> Factory(bool enabled = false, bool forbidWorkspace = false, int leaseSeconds = 300,
         IInterceptor? interceptor = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .UseSetting("SourceCollectionWorker:Enabled", enabled.ToString())
             .UseSetting("SourceCollectionWorker:MaxAttempts", "1")

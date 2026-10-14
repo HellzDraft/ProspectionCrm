@@ -66,7 +66,7 @@ public sealed class Phase7ReconstructionTests : IAsyncLifetime
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         var feed = new Feed();
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString())
             .UseSetting("SourceCollectionWorker:Enabled", "false").UseSetting("SourceCollectionScheduler:Enabled", "false")
             .ConfigureServices(s => { s.RemoveAll<IRssFeedTransport>(); s.AddSingleton<IRssFeedTransport>(feed); }));

@@ -4,7 +4,7 @@ using ProspectionCrm.Api.Entities;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
-// Only HTTP-facing read services use the temporary V1 current-workspace convention.
+// Only HTTP-facing read services use the authenticated current workspace.
 public sealed class AutomationSupervisionWorkspace(ProspectionCrmDbContext db, ICurrentWorkspaceProvider provider)
 {
     public async Task<AutomationJobResult<AutomationRuntimeSettings>> ResolveAsync(CancellationToken token)

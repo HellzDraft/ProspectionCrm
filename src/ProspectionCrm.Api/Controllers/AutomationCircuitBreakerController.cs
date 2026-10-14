@@ -8,7 +8,7 @@ namespace ProspectionCrm.Api.Controllers;
 [Route("api/automation-circuit-breaker")]
 [AutomationSupervisionErrors("AutomationCircuitBreakerInternalError")]
 public sealed class AutomationCircuitBreakerController(AutomationSupervisionWorkspace workspace,
-    AutomationCircuitBreakerService circuit) : ControllerBase
+    AutomationCircuitBreakerService circuit, ProspectionCrm.Api.Security.IHumanActor humanActor) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AutomationCircuitStatus>> Get(CancellationToken token)
@@ -34,7 +34,7 @@ public sealed class AutomationCircuitBreakerController(AutomationSupervisionWork
     {
         var resolved = await workspace.ResolveAsync(token);
         if (resolved.Value is not { } settings) return Failure(resolved.Status, resolved.Code);
-        var result = await circuit.ResetAsync(settings.WorkspaceId, request, token);
+        var result = await circuit.ResetAsync(settings.WorkspaceId, request, humanActor, token);
         return result.Value is not null ? Ok(result.Value) : Failure(result.Status, result.Code);
     }
 

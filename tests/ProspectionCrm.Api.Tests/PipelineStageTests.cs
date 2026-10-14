@@ -35,7 +35,7 @@ public sealed class PipelineStageTests : IAsyncLifetime
         db.Pipelines.Add(pipeline);
         await db.SaveChangesAsync();
         pipelineId = pipeline.Id;
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder =>
             builder.UseEnvironment("Testing")
                 .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
@@ -353,9 +353,9 @@ public sealed class PipelineStageTests : IAsyncLifetime
         await blocker.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Pipelines\" WHERE \"Id\" = {pipelineId} FOR UPDATE", token);
         await using var firstDb = CreateContext();
         await using var secondDb = CreateContext();
-        var first = new PipelineStageService(firstDb, new CurrentWorkspaceProvider(firstDb)).CreateAsync(pipelineId,
+        var first = new PipelineStageService(firstDb, new TestWorkspaceProvider(firstDb)).CreateAsync(pipelineId,
             new() { Name = "First concurrent", CategoryCode = "active" }, token);
-        var second = new PipelineStageService(secondDb, new CurrentWorkspaceProvider(secondDb)).CreateAsync(pipelineId,
+        var second = new PipelineStageService(secondDb, new TestWorkspaceProvider(secondDb)).CreateAsync(pipelineId,
             new() { Name = "Second concurrent", CategoryCode = "success" }, token);
         await WaitForBlockedWritesAsync(2, token);
         Assert.False(first.IsCompleted);
@@ -382,11 +382,11 @@ public sealed class PipelineStageTests : IAsyncLifetime
         await blocker.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT 1 FROM \"Pipelines\" WHERE \"Id\" = {pipelineId} FOR UPDATE", token);
         await using var waitingDb = CreateContext();
-        var waiting = new PipelineStageService(waitingDb, new CurrentWorkspaceProvider(waitingDb)).CreateAsync(
+        var waiting = new PipelineStageService(waitingDb, new TestWorkspaceProvider(waitingDb)).CreateAsync(
             pipelineId, new() { Name = "Waiting", CategoryCode = "active" }, token);
         await WaitForBlockedWritesAsync(1, token);
         await using var independentDb = CreateContext();
-        var independent = await new PipelineStageService(independentDb, new CurrentWorkspaceProvider(independentDb))
+        var independent = await new PipelineStageService(independentDb, new TestWorkspaceProvider(independentDb))
             .CreateAsync(other.Id, new() { Name = "Independent", CategoryCode = "success" }, token);
         Assert.Equal(PipelineStageWriteStatus.Succeeded, independent.Status);
         Assert.Equal(other.Id, independent.Stage!.PipelineId);
@@ -410,7 +410,7 @@ public sealed class PipelineStageTests : IAsyncLifetime
         await blocker.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE \"Pipelines\" SET \"ArchivedAt\" = {DateTimeOffset.UtcNow} WHERE \"Id\" = {pipelineId}", token);
         await using var writer = CreateContext();
-        var create = new PipelineStageService(writer, new CurrentWorkspaceProvider(writer)).CreateAsync(pipelineId,
+        var create = new PipelineStageService(writer, new TestWorkspaceProvider(writer)).CreateAsync(pipelineId,
             new() { Name = "Rejected", CategoryCode = "active" }, token);
         await WaitForBlockedWritesAsync(1, token);
         Assert.False(create.IsCompleted);

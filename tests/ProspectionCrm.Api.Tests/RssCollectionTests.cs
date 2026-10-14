@@ -28,7 +28,7 @@ public sealed class RssCollectionTests : PersistentSourceIdentityFixture
     private static string Rss(string items = GoodItem) => RssAtomFeedParserTests.Rss(items);
     private static string Route(Guid id) => $"/api/saved-searches/{id}/collect";
     private WebApplicationFactory<Program> Factory(FakeTransport fake, params IInterceptor[] interceptors) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .ConfigureServices(services =>
             {
@@ -320,7 +320,7 @@ public sealed class RssCollectionTests : PersistentSourceIdentityFixture
     {
         await using var db = Db(); Assert.Empty(await db.Database.GetAppliedMigrationsAsync());
         await db.Database.MigrateAsync(); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(IntegrationPersistenceMigrationTests.Current, db.Database.GetMigrations().Last());
+        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(IntegrationSecurityMigrationTests.Current, db.Database.GetMigrations().Last());
         var fake = new FakeTransport(Rss()); using var factory = Factory(fake); using var client = Client(factory);
         using var bootstrap = await client.PostAsync("/api/setup/bootstrap", null); Assert.Equal(HttpStatusCode.Created, bootstrap.StatusCode);
         using var initial = await client.PostAsync("/api/setup/initial-pipelines", null); Assert.Equal(HttpStatusCode.Created, initial.StatusCode);

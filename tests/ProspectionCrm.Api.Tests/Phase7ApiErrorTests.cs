@@ -12,7 +12,7 @@ namespace ProspectionCrm.Api.Tests;
 public sealed class Phase7ApiErrorTests : PersistentSourceIdentityFixture
 {
     private const string Sensitive = "phase7-audit-sensitive-marker";
-    private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> Factory() => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Development").ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = Postgres.GetConnectionString(),

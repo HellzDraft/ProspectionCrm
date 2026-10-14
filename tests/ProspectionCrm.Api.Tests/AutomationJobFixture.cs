@@ -56,7 +56,7 @@ public abstract class AutomationJobFixture(AutomationJobDatabase database)
         await using var db = Db(); var result = await Queue(db).EnqueueAsync(workspace, request ?? Request(), default);
         Assert.Equal(201, result.Status); return Assert.IsType<AutomationJob>(result.Value);
     }
-    protected WebApplicationFactory<Program> Factory(Guid? workspace) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    protected WebApplicationFactory<Program> Factory(Guid? workspace) => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", database.Postgres.GetConnectionString())
         .UseSetting("SourceCollectionWorker:Enabled", "false").UseSetting("SourceCollectionScheduler:Enabled", "false")
         .ConfigureServices(s => { if (workspace is { } id) { s.RemoveAll<ICurrentWorkspaceProvider>(); s.AddScoped<ICurrentWorkspaceProvider>(_ => new FixedWorkspace(id)); } }));

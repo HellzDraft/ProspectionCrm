@@ -28,7 +28,7 @@ public sealed class PipelineCloneTests : IAsyncLifetime
         await using var db = CreateContext();
         await db.Database.MigrateAsync();
         workspaceId = (await new BootstrapService(db).BootstrapAsync(default)).Bootstrap!.WorkspaceId;
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder => builder
             .UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     }
@@ -49,7 +49,7 @@ public sealed class PipelineCloneTests : IAsyncLifetime
         return new(options.Options);
     }
 
-    private static PipelineService Service(ProspectionCrmDbContext db) => new(db, new CurrentWorkspaceProvider(db));
+    private static PipelineService Service(ProspectionCrmDbContext db) => new(db, new TestWorkspaceProvider(db));
 
     private async Task<Pipeline> SeedAsync(bool archived = false, bool visible = false)
     {
@@ -327,7 +327,7 @@ public sealed class PipelineCloneTests : IAsyncLifetime
         var token = timeout.Token;
         var gate = new SaveGate(afterSave: true); // For reorder this pauses after the temporary positions have been persisted.
         await using var writer = CreateContext(gate);
-        var stages = new PipelineStageService(writer, new CurrentWorkspaceProvider(writer));
+        var stages = new PipelineStageService(writer, new TestWorkspaceProvider(writer));
         var write = operation switch
         {
             "create" => stages.CreateAsync(source.Id, new() { Name = "New", CategoryCode = "active" }, token),

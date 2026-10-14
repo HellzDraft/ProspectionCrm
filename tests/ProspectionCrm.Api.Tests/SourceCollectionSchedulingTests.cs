@@ -32,7 +32,7 @@ public sealed class SourceCollectionSchedulingTests : PersistentSourceIdentityFi
         }
     }
     private readonly Feed feed = new();
-    private WebApplicationFactory<Program> Factory(bool scheduler = false) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> Factory(bool scheduler = false) => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .UseSetting("SourceCollectionWorker:Enabled", "false").UseSetting("SourceCollectionScheduler:Enabled", scheduler.ToString())
             .UseSetting("SourceCollectionScheduler:PollIntervalSeconds", "1")

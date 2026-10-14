@@ -266,3 +266,15 @@ après le futur commit correctif.** La suite complète locale n'est pas relancé
 Aucun changement métier, de migration ou de workflow ; aucune migration sur
 Development, aucune manipulation de n8n réel ou des sauvegardes. Aucun staging,
 commit ou push dans cette correction, aucune Phase 9.3.2 engagée.
+
+## Clôture après CI #59 — vérification du 14 octobre 2026
+
+La [CI Build #59](https://github.com/HellzDraft/ProspectionCrm/actions/runs/38425587075)
+du commit `45ef44b4480f73f29d666e3c3b7fcb6ba760306f` sur `main` est terminée
+avec la conclusion **success**. Le statut a été relu via l'API GitHub pendant
+la préparation de 9.3.2. Le run a démarré le 13 octobre 2026 à 17 h 51 et s'est
+terminé à 18 h 01 (Europe/Paris).
+
+Cette réussite clôt la validation de 9.3.1, correctif de migration inclus.
+Les résultats ciblés locaux et l'échec historique de la CI #58 ci-dessus restent
+conservés. Ce constat ne vaut pas validation des modifications ultérieures 9.3.2.

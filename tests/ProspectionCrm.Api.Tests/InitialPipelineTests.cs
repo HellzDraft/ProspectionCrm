@@ -27,7 +27,7 @@ public sealed class InitialPipelineTests : IAsyncLifetime
         await postgres.StartAsync();
         await using var db = CreateContext();
         await db.Database.MigrateAsync();
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder => builder
             .UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     }
@@ -44,7 +44,7 @@ public sealed class InitialPipelineTests : IAsyncLifetime
 
     private static InitialPipelineService Service(ProspectionCrmDbContext db)
     {
-        var provider = new CurrentWorkspaceProvider(db);
+        var provider = new TestWorkspaceProvider(db);
         return new(db, provider, new PipelineService(db, provider));
     }
 

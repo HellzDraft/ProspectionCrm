@@ -1,0 +1,22 @@
+@implements IDisposable
+@inject ProspectionCrm.Blazor.Services.SessionState State
+@inject ProspectionCrm.Blazor.Services.SessionService Session
+@inject NavigationManager Navigation
+
+@if (State.Authenticated)
+{
+    <span>Opérateur connecté</span>
+    <button @onclick="Logout">Se déconnecter</button>
+}
+else { <a href="login">Se connecter</a> }
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += Changed;
+        try { await Session.RefreshAsync(); } catch (HttpRequestException) { State.Set(false); }
+    }
+    private void Changed() => _ = InvokeAsync(StateHasChanged);
+    private async Task Logout() { await Session.LogoutAsync(); Navigation.NavigateTo("login"); }
+    public void Dispose() => State.Changed -= Changed;
+}

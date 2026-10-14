@@ -1549,6 +1549,9 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ConnectionId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("CorrelationId")
                         .HasColumnType("uuid");
 
@@ -1588,6 +1591,8 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.ToTable("IntegrationOperations", null, t =>
                         {
                             t.HasCheckConstraint("CK_IntegrationOperations_Completion", "(\"StatusCode\" IN ('succeeded','failed')) = (\"CompletedAt\" IS NOT NULL)\nAND (\"CompletedAt\" IS NULL OR \"CompletedAt\" >= \"CreatedAt\")");
+
+                            t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
                             t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND \"Type\" = 'technical.probe'");
 

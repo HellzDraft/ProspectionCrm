@@ -17,7 +17,7 @@ namespace ProspectionCrm.Api.Tests;
 public sealed class OpportunitySourceTests : PersistentSourceIdentityFixture
 {
     private WebApplicationFactory<Program> Factory(IInterceptor? interceptor = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        new BusinessTestFactory().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString());
             if (interceptor is not null)

@@ -26,7 +26,7 @@ public abstract class AutomationActionRequestFixture(AutomationJobDatabase datab
     protected AutomationActionRequestService Service(ProspectionCrmDbContext db, Guid workspace)
     {
         var runtime = Runtime(db);
-        return new(db, new WorkspaceProvider(workspace), runtime, new(db, runtime));
+        return new(db, new WorkspaceProvider(workspace), runtime, new(db, runtime), new TestHumanActor(db, workspace));
     }
     private sealed class WorkspaceProvider(Guid workspace) : ICurrentWorkspaceProvider
     {

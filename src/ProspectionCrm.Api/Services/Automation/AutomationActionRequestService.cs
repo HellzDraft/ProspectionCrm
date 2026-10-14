@@ -2,11 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.AutomationActionRequests;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Security;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
 public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspaceProvider,
-    AutomationRuntimeStore runtime, AutomationActionRequestStore store)
+    AutomationRuntimeStore runtime, AutomationActionRequestStore store, IHumanActor humanActor)
 {
     public async Task<AutomationJobResult<AutomationActionRequestDto>> GetAsync(Guid id, CancellationToken token)
     {
@@ -43,6 +44,13 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
         var workspace = await WorkspaceAsync(token);
         if (workspace is null) return new(null, 409, "WorkspaceUnavailable");
         await using var tx = await db.Database.BeginTransactionAsync(token);
+        var identity = await humanActor.RequireAsync(token);
+        if (identity.WorkspaceId != workspace.Value) throw new UnauthorizedAccessException("operator-workspace-mismatch");
+        var owner = await db.Workspaces.FromSqlInterpolated($"""
+            SELECT * FROM "Workspaces" WHERE "Id" = {workspace.Value} FOR SHARE
+            """).AsNoTracking().SingleOrDefaultAsync(token);
+        if (owner?.OwnerUserId != identity.UserId || owner.ArchivedAt is not null)
+            throw new UnauthorizedAccessException("operator-workspace-mismatch");
         await runtime.LockAsync(workspace.Value, token);
         var request = await db.AutomationActionRequests.FromSqlInterpolated($"""
             SELECT * FROM "AutomationActionRequests" WHERE "Id" = {id} AND "WorkspaceId" = {workspace.Value} FOR UPDATE
@@ -72,12 +80,10 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
                 || request.ActionCategoryCode != AutomationCategories.General || request.ActionCategoryCode != job.ActionCategoryCode
                 || AutomationActionSnapshot.Parse(request.ActionPlanJson) is null) return new(null, 409, "ActionRequestUnavailable");
         }
-        // Temporary V1 actor convention; never supplied by the client.
-        var actor = await db.Workspaces.Where(x => x.Id == workspace.Value).Select(x => x.OwnerUserId).SingleAsync(token);
         request.StatusCode = desired;
         request.DecidedAt = runtime.Now < request.RequestedAt ? request.RequestedAt : runtime.Now;
         request.UpdatedAt = request.DecidedAt;
-        request.DecidedByUserId = actor;
+        request.DecidedByUserId = identity.UserId;
         request.DecisionNote = string.IsNullOrWhiteSpace(body.DecisionNote) ? null : body.DecisionNote;
         await db.SaveChangesAsync(token);
         var changed = approve ? await store.ResumeApprovedAsync(request, token) : await store.RejectAwaitingApprovalAsync(request, token);

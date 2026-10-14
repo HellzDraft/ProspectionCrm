@@ -29,7 +29,7 @@ public sealed class PipelineTransferTests : IAsyncLifetime
         await using var db = CreateContext();
         await db.Database.MigrateAsync();
         workspaceId = (await new BootstrapService(db).BootstrapAsync(default)).Bootstrap!.WorkspaceId;
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder => builder
             .UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     }
@@ -483,7 +483,7 @@ public sealed class PipelineTransferTests : IAsyncLifetime
         // Seed slots are 0/1/4/9. Reject only the last imported stage, after valid preceding inserts.
         await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"PipelineStages\" ADD CONSTRAINT reject_import_slot CHECK (\"SortOrder\" <> 2)");
         var document = Document().Deserialize<PipelineTransferDocument>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var service = new PipelineService(db, new CurrentWorkspaceProvider(db));
+        var service = new PipelineService(db, new TestWorkspaceProvider(db));
         var error = await Assert.ThrowsAsync<DbUpdateException>(() => service.ImportAsync(document, default));
         Assert.Equal("reject_import_slot", Assert.IsType<PostgresException>(error.InnerException).ConstraintName);
         Assert.Equal(before, await SnapshotAsync());

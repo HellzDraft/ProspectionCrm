@@ -37,7 +37,7 @@ public sealed class IngestionTests : IAsyncLifetime
         await using var db = Db();
         await db.Database.MigrateAsync();
         setup = await SeedAsync(db);
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
     }

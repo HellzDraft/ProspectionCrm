@@ -58,7 +58,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
     private async Task<IngestionResult> IngestAsync(Setup setup, params IngestionItemRequest[] items)
     {
         await using var db = Db();
-        return await new IngestionService(db, new CurrentWorkspaceProvider(db), NullLogger<IngestionService>.Instance)
+        return await new IngestionService(db, new TestWorkspaceProvider(db), NullLogger<IngestionService>.Instance)
             .IngestAsync(setup.SearchId, new() { PipelineStageId = setup.StageId, Items = items.ToList() }, default);
     }
     private async Task<SourceExecution> HistoryAsync(Guid id)
@@ -315,7 +315,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         await using var db = Db(gate);
         using var cancellation = new CancellationTokenSource();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var service = new IngestionService(db, new CurrentWorkspaceProvider(db), NullLogger<IngestionService>.Instance);
+        var service = new IngestionService(db, new TestWorkspaceProvider(db), NullLogger<IngestionService>.Instance);
         var task = service.IngestAsync(setup.SearchId, new() { PipelineStageId = setup.StageId, Items =
             [Item("1", "https://example.invalid/1"), Item("2", "https://example.invalid/2"), Item("3", "https://example.invalid/3")] }, cancellation.Token);
         try { await gate.Reached.Task.WaitAsync(timeout.Token); }
@@ -375,7 +375,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         Assert.Equal((0, 0, 0, 0), (legacy.ItemsRejected, legacy.ItemsRolledBack, legacy.ItemsNotProcessed, legacy.ItemsCancelled));
         Assert.Empty(await db.SourceExecutionItems.ToArrayAsync());
         Assert.Empty(await db.SourceExecutionItemSources.ToArrayAsync());
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
         var dto = (await client.GetFromJsonAsync<SourceExecutionDto>($"/api/source-executions/{execution}"))!;
@@ -473,7 +473,7 @@ public sealed class IngestionHistoryTests : IAsyncLifetime
         await db.Database.MigrateAsync();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.False(db.Database.HasPendingModelChanges());
-        Assert.Equal(IntegrationPersistenceMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(IntegrationSecurityMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Empty(await db.SourceExecutionItems.ToArrayAsync());
         Assert.Empty(await db.SourceExecutionItemSources.ToArrayAsync());
     }

@@ -31,7 +31,7 @@ public sealed class SourceCollectionRetryTests : PersistentSourceIdentityFixture
         }
     }
     private readonly Feed feed = new();
-    private WebApplicationFactory<Program> Factory(int max = 3, bool enabled = false, int delay = 60) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> Factory(int max = 3, bool enabled = false, int delay = 60) => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", Postgres.GetConnectionString())
             .UseSetting("SourceCollectionWorker:Enabled", enabled.ToString()).UseSetting("SourceCollectionWorker:MaxAttempts", max.ToString())
             .UseSetting("SourceCollectionWorker:IdleDelaySeconds", "1").UseSetting("SourceCollectionWorker:InitialRetryDelaySeconds", delay.ToString())

@@ -9,7 +9,13 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
     ?? throw new InvalidOperationException("La configuration ApiBaseUrl est requise.");
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
+var api = new Uri(apiBaseUrl);
+if (api.Scheme != "https" || !string.IsNullOrEmpty(api.UserInfo))
+    throw new InvalidOperationException("ApiBaseUrl doit être une URL HTTPS.");
+builder.Services.AddScoped<SessionState>();
+builder.Services.AddScoped<SessionService>();
+builder.Services.AddScoped(sp => new HttpClient(new ApiCookieHandler(api, sp.GetRequiredService<SessionState>(),
+    sp.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()) { InnerHandler = new HttpClientHandler() }) { BaseAddress = api });
 builder.Services.AddScoped<OpportunityApiService>();
 builder.Services.AddScoped<PipelineApiService>();
 

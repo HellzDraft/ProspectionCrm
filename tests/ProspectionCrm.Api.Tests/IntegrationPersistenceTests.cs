@@ -14,6 +14,8 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) : IClassFixture<AutomationJobDatabase>
 {
+    private static readonly Guid Connection = Guid.Parse("c1134e63-c552-481d-8b1e-e68516dd6020");
+    private static IntegrationAccess Access(IntegrationOperation op) => new(op.WorkspaceId, Connection);
     private static IntegrationStore Store(ProspectionCrmDbContext db) => new(db, TimeProvider.System);
 
     private async Task<IntegrationOperation> Operation(bool start = true)
@@ -22,7 +24,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
         var workspace = new Workspace { Name = "Integration probe", TimeZoneId = "UTC",
             OwnerUser = new() { Email = $"{Guid.NewGuid():N}@example.invalid" } };
         db.Add(workspace); await db.SaveChangesAsync();
-        var op = await Store(db).CreateProbeAsync(workspace.Id);
+        var op = await Store(db).CreateProbeAsync(workspace.Id, Connection);
         if (start) await Store(db).BeginAttemptAsync(workspace.Id, op.Id, op.Revision);
         return (await Store(db).FindAsync(workspace.Id, op.Id))!;
     }
@@ -42,7 +44,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
             var attempt = await db.IntegrationAttempts.SingleAsync(x => x.OperationId == op.Id);
             await store.FinishAttemptAsync(op.WorkspaceId, op.Id, attempt.Id, IntegrationTransportOutcome.Acknowledged);
             Assert.Equal("awaiting-result", (await store.FindAsync(op.WorkspaceId, op.Id))!.StatusCode);
-            Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(json));
+            Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(Access(op), json));
             var received = (await store.FindAsync(op.WorkspaceId, op.Id))!;
             Assert.Equal("result-received", received.StatusCode); Assert.Null(received.CompletedAt);
         }
@@ -60,7 +62,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
         Assert.Equal(outcome, completed.StatusCode); Assert.NotNull(completed.CompletedAt);
         Assert.NotNull((await verify.IntegrationReceipts.SingleAsync(x => x.OperationId == op.Id)).ProcessedAt);
         Assert.Empty(await Store(verify).PendingReceiptsAsync(op.WorkspaceId));
-        Assert.Equal(IntegrationReception.AlreadyRecorded, await Store(verify).ReceiveAsync(json));
+        Assert.Equal(IntegrationReception.AlreadyRecorded, await Store(verify).ReceiveAsync(Access(op), json));
         await Conflict("operation-state-conflict", () => Store(verify).ProcessProbeAsync(op.WorkspaceId, op.Id, completed.Revision));
         await Conflict("operation-state-conflict", () => Store(verify).BeginAttemptAsync(op.WorkspaceId, op.Id, completed.Revision));
         Assert.Empty(await verify.SourceExecutions.Where(x => x.WorkspaceId == op.WorkspaceId).ToListAsync());
@@ -74,13 +76,13 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
     {
         var op = await Operation(); var result = Result(op); var json = IntegrationContracts.Serialize(result);
         await using var db = database.Db(); var store = Store(db);
-        Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(json));
+        Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(Access(op), json));
         var original = JsonNode.Parse(json)!.AsObject();
         var reordered = new JsonObject(original.Reverse().Select(x => new KeyValuePair<string, JsonNode?>(x.Key, x.Value?.DeepClone())));
         reordered["messageId"] = result.MessageId.ToString("D").ToUpperInvariant();
-        Assert.Equal(IntegrationReception.AlreadyRecorded, await store.ReceiveAsync("\n " + reordered.ToJsonString() + " \n"));
-        await Conflict("message-content-conflict", () => store.ReceiveAsync(IntegrationContracts.Serialize(result with { Payload = result.Payload with { Outcome = "failed" } })));
-        await Conflict("operation-state-conflict", () => store.ReceiveAsync(IntegrationContracts.Serialize(result with { MessageId = Guid.NewGuid() })));
+        Assert.Equal(IntegrationReception.AlreadyRecorded, await store.ReceiveAsync(Access(op), "\n " + reordered.ToJsonString() + " \n"));
+        await Conflict("message-content-conflict", () => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(result with { Payload = result.Payload with { Outcome = "failed" } })));
+        await Conflict("operation-state-conflict", () => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(result with { MessageId = Guid.NewGuid() })));
         var receipt = await db.IntegrationReceipts.SingleAsync(x => x.OperationId == op.Id);
         Assert.Equal(json, receipt.CanonicalContent);
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json))), receipt.ContentSha256);
@@ -94,16 +96,18 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
         await using var db = database.Db(); var store = Store(db);
         foreach (var invalid in new[] { result with { OperationId = other.Id }, result with { CorrelationId = Guid.NewGuid() },
                      result with { CommandMessageId = Guid.NewGuid() }, result with { Payload = new(Guid.NewGuid(), "succeeded") } })
-            await Conflict("operation-context-conflict", () => store.ReceiveAsync(IntegrationContracts.Serialize(invalid)));
-        await Conflict("operation-not-found", () => store.ReceiveAsync(IntegrationContracts.Serialize(result with { OperationId = Guid.NewGuid() })));
+            if (invalid.OperationId == other.Id)
+                await Assert.ThrowsAsync<IntegrationAccessException>(() => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(invalid)));
+            else await Conflict("operation-context-conflict", () => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(invalid)));
+        await Assert.ThrowsAsync<IntegrationAccessException>(() => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(result with { OperationId = Guid.NewGuid() })));
         Assert.Null(await store.FindAsync(other.WorkspaceId, op.Id));
         await Conflict("operation-not-found", () => store.BeginAttemptAsync(other.WorkspaceId, op.Id, op.Revision));
-        Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(IntegrationContracts.Serialize(result)));
+        Assert.Equal(IntegrationReception.Recorded, await store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(result)));
         Assert.Empty(await store.PendingReceiptsAsync(other.WorkspaceId));
         await Conflict("operation-not-found", () => store.ProcessProbeAsync(other.WorkspaceId, op.Id, 2));
         Assert.Single(await store.PendingReceiptsAsync(op.WorkspaceId));
         // A message ID is global across workspaces, not scoped to an untrusted payload.
-        await Conflict("message-content-conflict", () => store.ReceiveAsync(IntegrationContracts.Serialize(Result(other) with { MessageId = result.MessageId })));
+        await Assert.ThrowsAsync<IntegrationAccessException>(() => store.ReceiveAsync(Access(other), IntegrationContracts.Serialize(Result(other) with { MessageId = result.MessageId })));
         Assert.Equal("awaiting-result", (await store.FindAsync(other.WorkspaceId, other.Id))!.StatusCode);
     }
 
@@ -113,7 +117,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
         var op = await Operation(false);
         await using var db = database.Db(); var store = Store(db);
         var command = await store.CommandAsync(op.WorkspaceId, op.Id);
-        await Conflict("operation-state-conflict", () => store.ReceiveAsync(IntegrationContracts.Serialize(Result(op))));
+        await Conflict("operation-state-conflict", () => store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(Result(op))));
         await Conflict("operation-state-conflict", () => store.ProcessProbeAsync(op.WorkspaceId, op.Id, 0));
         var first = await store.BeginAttemptAsync(op.WorkspaceId, op.Id, 0);
         await Conflict("operation-revision-conflict", () => store.BeginAttemptAsync(op.WorkspaceId, op.Id, 0));
@@ -131,7 +135,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
     public async Task ConcurrentDuplicateDeliveriesWaitOnPostgresAndCreateExactlyOneReceipt()
     {
         var op = await Operation(); var json = IntegrationContracts.Serialize(Result(op));
-        var results = await Race(op.Id, 8, async db => (await Store(db).ReceiveAsync(json)).ToString());
+        var results = await Race(op.Id, 8, async db => (await Store(db).ReceiveAsync(Access(op), json)).ToString());
         Assert.Single(results, x => x == "Recorded"); Assert.Equal(7, results.Count(x => x == "AlreadyRecorded"));
         await using var verify = database.Db();
         Assert.Equal(1, await verify.IntegrationReceipts.CountAsync(x => x.OperationId == op.Id));
@@ -145,7 +149,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
         var results = await Race(op.Id, 2, async db =>
         {
             var outcome = Interlocked.Increment(ref turn) == 0 ? "succeeded" : "failed";
-            return (await Store(db).ReceiveAsync(IntegrationContracts.Serialize(result with { Payload = result.Payload with { Outcome = outcome } }))).ToString();
+            return (await Store(db).ReceiveAsync(Access(op), IntegrationContracts.Serialize(result with { Payload = result.Payload with { Outcome = outcome } }))).ToString();
         });
         Assert.Contains("Recorded", results); Assert.Contains("message-content-conflict", results);
         var processed = await Race(op.Id, 2, async db => { await Store(db).ProcessProbeAsync(op.WorkspaceId, op.Id, 2); return "processed"; });
@@ -171,7 +175,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
     {
         var op = await Operation();
         await using var db = database.Db();
-        await Store(db).ReceiveAsync(IntegrationContracts.Serialize(Result(op)));
+        await Store(db).ReceiveAsync(Access(op), IntegrationContracts.Serialize(Result(op)));
         var receipt = await db.IntegrationReceipts.AsNoTracking().SingleAsync(x => x.OperationId == op.Id);
         var duplicate = new IntegrationReceipt { MessageId = receipt.MessageId, OperationId = receipt.OperationId,
             CanonicalContent = receipt.CanonicalContent, ContentSha256 = receipt.ContentSha256, ReceivedAt = receipt.ReceivedAt };
@@ -191,7 +195,7 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
     {
         var op = await Operation();
         await using var db = database.Db(); var store = Store(db);
-        await store.ReceiveAsync(IntegrationContracts.Serialize(Result(op)));
+        await store.ReceiveAsync(Access(op), IntegrationContracts.Serialize(Result(op)));
         await store.ProcessProbeAsync(op.WorkspaceId, op.Id, 2);
         var attempt = await db.IntegrationAttempts.SingleAsync(x => x.OperationId == op.Id);
         await store.FinishAttemptAsync(op.WorkspaceId, op.Id, attempt.Id, IntegrationTransportOutcome.Acknowledged);
@@ -211,13 +215,13 @@ public sealed class IntegrationPersistenceTests(AutomationJobDatabase database) 
             """);
         try
         {
-            var error = await Assert.ThrowsAsync<PostgresException>(() => store.ReceiveAsync(json));
+            var error = await Assert.ThrowsAsync<PostgresException>(() => store.ReceiveAsync(Access(op), json));
             Assert.Equal(PostgresErrorCodes.CheckViolation, error.SqlState);
             Assert.False(await db.IntegrationReceipts.AnyAsync(x => x.OperationId == op.Id));
             Assert.Equal("awaiting-result", (await store.FindAsync(op.WorkspaceId, op.Id))!.StatusCode);
         }
         finally { await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"IntegrationOperations\" DROP CONSTRAINT \"CK_IntegrationTests_Fault\""); }
-        await store.ReceiveAsync(json);
+        await store.ReceiveAsync(Access(op), json);
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE "IntegrationOperations" ADD CONSTRAINT "CK_IntegrationTests_Fault"
             CHECK ("StatusCode" NOT IN ('succeeded','failed')) NOT VALID

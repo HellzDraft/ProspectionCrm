@@ -23,7 +23,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public sealed class Phase6ReconstructionTests : IAsyncLifetime
 {
-    private const string LastMigration = IntegrationPersistenceMigrationTests.Current;
+    private const string LastMigration = IntegrationSecurityMigrationTests.Current;
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:18").Build();
     public Task InitializeAsync() => postgres.StartAsync();
     public Task DisposeAsync() => postgres.DisposeAsync().AsTask();
@@ -65,7 +65,7 @@ public sealed class Phase6ReconstructionTests : IAsyncLifetime
         Assert.Equal(LastMigration, declared.Last());
 
         // Testing avoids development User Secrets; this connection is the disposable container only.
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
         var bootstrap = await Post<BootstrapDto>(client, "/api/setup/bootstrap", null);

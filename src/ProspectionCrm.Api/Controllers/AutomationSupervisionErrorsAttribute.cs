@@ -14,6 +14,7 @@ public sealed class AutomationSupervisionErrorsAttribute : ActionFilterAttribute
     }
     public void OnException(ExceptionContext context)
     {
+        if (context.Exception is UnauthorizedAccessException) return;
         if (context.Exception is OperationCanceledException && context.HttpContext.RequestAborted.IsCancellationRequested) return;
         var error = context.Exception.GetBaseException();
         var conflict = error is PostgresException { SqlState: "40001" or "40P01" or "23505" or "23503" };

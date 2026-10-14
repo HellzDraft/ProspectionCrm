@@ -31,7 +31,7 @@ public sealed class PipelineTests : IAsyncLifetime
         await db.Database.MigrateAsync();
         var setup = await new BootstrapService(db).BootstrapAsync(default);
         workspaceId = setup.Bootstrap!.WorkspaceId;
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        factory = new BusinessTestFactory().WithWebHostBuilder(builder =>
             builder.UseEnvironment("Testing")
                 .UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
@@ -256,7 +256,7 @@ public sealed class PipelineTests : IAsyncLifetime
         Assert.NotNull(archivedDetailWithStages.ArchivedAt);
         Assert.Equal(new[] { archivedStage.Id, stage.Id }, archivedDetailWithStages.Stages.Select(x => x.Id));
         Assert.Equal(before, await ChildrenSnapshotAsync(db));
-        var opportunities = new OpportunityService(db, new CurrentWorkspaceProvider(db));
+        var opportunities = new OpportunityService(db, new TestWorkspaceProvider(db));
         var rejected = await opportunities.CreateAsync(new CreateOpportunityRequest
         {
             Title = "New", PipelineStageId = stage.Id, PriorityCode = "normal"
@@ -309,7 +309,7 @@ public sealed class PipelineTests : IAsyncLifetime
         // Force an archive failure only in the disposable test database.
         await db.Database.ExecuteSqlRawAsync(
             "ALTER TABLE \"Pipelines\" ADD CONSTRAINT reject_archive CHECK (\"ArchivedAt\" IS NULL)");
-        var service = new PipelineService(db, new CurrentWorkspaceProvider(db));
+        var service = new PipelineService(db, new TestWorkspaceProvider(db));
         await Assert.ThrowsAsync<DbUpdateException>(() => service.ArchiveAsync(pipeline.Id, default));
         await using var check = CreateContext();
         Assert.Null((await check.Pipelines.SingleAsync()).ArchivedAt);
@@ -342,8 +342,8 @@ public sealed class PipelineTests : IAsyncLifetime
         await blocker.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Workspaces\" WHERE \"Id\" = {workspaceId} FOR UPDATE", token);
         await using var firstDb = CreateContext();
         await using var secondDb = CreateContext();
-        var archive = new PipelineService(firstDb, new CurrentWorkspaceProvider(firstDb)).ArchiveAsync(pipeline.Id, token);
-        var setDefault = new PipelineService(secondDb, new CurrentWorkspaceProvider(secondDb)).SetDefaultAsync(pipeline.Id, token);
+        var archive = new PipelineService(firstDb, new TestWorkspaceProvider(firstDb)).ArchiveAsync(pipeline.Id, token);
+        var setDefault = new PipelineService(secondDb, new TestWorkspaceProvider(secondDb)).SetDefaultAsync(pipeline.Id, token);
         await using var observer = new NpgsqlConnection(postgres.GetConnectionString());
         await observer.OpenAsync(token);
         await using var waiting = new NpgsqlCommand(

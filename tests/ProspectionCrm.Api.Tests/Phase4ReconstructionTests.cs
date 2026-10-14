@@ -68,7 +68,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         var gate = new BeforeSaveGate();
         await using var writer = new ProspectionCrmDbContext(new DbContextOptionsBuilder<ProspectionCrmDbContext>()
             .UseNpgsql(postgres.GetConnectionString()).AddInterceptors(gate).Options);
-        var opportunities = new OpportunityService(writer, new CurrentWorkspaceProvider(writer));
+        var opportunities = new OpportunityService(writer, new TestWorkspaceProvider(writer));
         async Task WriteAsync()
         {
             if (reassign)
@@ -92,10 +92,10 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         async Task ArchiveAsync()
         {
             if (archiveParent)
-                Assert.True(await new PipelineService(archiver, new CurrentWorkspaceProvider(archiver)).ArchiveAsync(pipeline.Id, token));
+                Assert.True(await new PipelineService(archiver, new TestWorkspaceProvider(archiver)).ArchiveAsync(pipeline.Id, token));
             else
                 Assert.Equal(PipelineStageWriteStatus.Succeeded,
-                    (await new PipelineStageService(archiver, new CurrentWorkspaceProvider(archiver)).ArchiveAsync(pipeline.Id, target.Id, token)).Status);
+                    (await new PipelineStageService(archiver, new TestWorkspaceProvider(archiver)).ArchiveAsync(pipeline.Id, target.Id, token)).Status);
         }
         var archive = ArchiveAsync();
         var blocked = false;
@@ -143,7 +143,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         else
             await blocker.PipelineStages.Where(x => x.Id == stage.Id).ExecuteUpdateAsync(x => x.SetProperty(s => s.ArchivedAt, DateTimeOffset.UtcNow), token);
         await using var writer = CreateContext();
-        var create = new OpportunityService(writer, new CurrentWorkspaceProvider(writer)).CreateAsync(
+        var create = new OpportunityService(writer, new TestWorkspaceProvider(writer)).CreateAsync(
             new() { Title = "Rejected", PipelineStageId = stage.Id, PriorityCode = "normal" }, token);
         await using var observer = new NpgsqlConnection(postgres.GetConnectionString());
         await observer.OpenAsync(token);
@@ -179,11 +179,11 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         var gate = new BeforeSaveGate();
         await using var writer = new ProspectionCrmDbContext(new DbContextOptionsBuilder<ProspectionCrmDbContext>()
             .UseNpgsql(postgres.GetConnectionString()).AddInterceptors(gate).Options);
-        var first = new OpportunityService(writer, new CurrentWorkspaceProvider(writer)).CreateAsync(
+        var first = new OpportunityService(writer, new TestWorkspaceProvider(writer)).CreateAsync(
             new() { Title = "Paused", PipelineStageId = stages[0].Id, PriorityCode = "normal" }, token);
         await gate.Reached.Task.WaitAsync(token);
         await using var contender = CreateContext();
-        var selected = new OpportunityService(contender, new CurrentWorkspaceProvider(contender)).CreateAsync(
+        var selected = new OpportunityService(contender, new TestWorkspaceProvider(contender)).CreateAsync(
             new() { Title = "Concurrent", PipelineStageId = stages[0].Id, PriorityCode = "normal" }, token);
         try
         {
@@ -202,7 +202,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
             await other.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Pipelines\" WHERE \"Id\" = {stages[0].PipelineId} FOR SHARE NOWAIT", token);
             await share.CommitAsync(token);
-            var written = await new PipelineStageService(other, new CurrentWorkspaceProvider(other)).CreateAsync(
+            var written = await new PipelineStageService(other, new TestWorkspaceProvider(other)).CreateAsync(
                 stages[1].PipelineId, new() { Name = "Independent", CategoryCode = "active" }, token);
             Assert.Equal(PipelineStageWriteStatus.Succeeded, written.Status);
             Assert.False(first.IsCompleted);
@@ -241,7 +241,7 @@ public sealed class Phase4ReconstructionTests : IAsyncLifetime
         Assert.Equal(db.Database.GetMigrations(), await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
 
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(builder => builder
             .UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString()));
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
         Assert.Empty(await db.UserAccounts.ToArrayAsync());

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.AutomationSupervision;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Security;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
@@ -47,11 +48,13 @@ public sealed class AutomationCircuitBreakerService(ProspectionCrmDbContext db, 
     }
 
     public async Task<AutomationJobResult<AutomationCircuitResetResult>> ResetAsync(Guid workspace,
-        ResetAutomationCircuitRequest request, CancellationToken token)
+        ResetAutomationCircuitRequest request, IHumanActor humanActor, CancellationToken token)
     {
         if (request.Note is { } note && (note.Length > 2000 || !AutomationJson.SafeText(note)))
             return new(null, 400, "InvalidResetNote");
         await using var tx = await db.Database.BeginTransactionAsync(token);
+        var identity = await humanActor.RequireAsync(token);
+        if (identity.WorkspaceId != workspace) throw new UnauthorizedAccessException("operator-workspace-mismatch");
         await AutomationRuntimeLock.AcquireAsync(db, workspace, token);
         var settings = await db.AutomationRuntimeSettings.FromSqlInterpolated($"""
             SELECT * FROM "AutomationRuntimeSettings" WHERE "WorkspaceId" = {workspace} FOR SHARE
@@ -66,10 +69,10 @@ public sealed class AutomationCircuitBreakerService(ProspectionCrmDbContext db, 
         var owner = await db.Workspaces.FromSqlInterpolated($"""
             SELECT * FROM "Workspaces" WHERE "Id" = {workspace} FOR SHARE
             """).AsNoTracking().SingleOrDefaultAsync(token);
-        if (owner is null) return new(null, 409, "WorkspaceUnavailable");
+        if (owner is null || owner.OwnerUserId != identity.UserId) throw new UnauthorizedAccessException("operator-workspace-mismatch");
         var marker = new AutomationCircuitReset { WorkspaceId = workspace,
             ResetAfterOutcomeSequence = before.LastAutomaticOutcomeSequence!.Value,
-            RequestedByUserId = owner.OwnerUserId, RequestedAt = clock.GetUtcNow().ToUniversalTime(),
+            RequestedByUserId = identity.UserId, RequestedAt = clock.GetUtcNow().ToUniversalTime(),
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note };
         // The shared workspace lock serializes every outcome and reset. The unique index also
         // protects the invariant against duplicate inserts from another database writer.

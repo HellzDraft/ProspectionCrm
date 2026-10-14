@@ -26,7 +26,7 @@ public sealed class AutomationSettingsTests : IAsyncLifetime
     private ProspectionCrmDbContext Db() => new(new DbContextOptionsBuilder<ProspectionCrmDbContext>().UseNpgsql(postgres.GetConnectionString()).Options);
     private sealed class FixedWorkspace(Guid id) : ICurrentWorkspaceProvider
     { public Task<Guid> GetCurrentWorkspaceIdAsync(CancellationToken cancellationToken = default) => Task.FromResult(id); }
-    private WebApplicationFactory<Program> Factory(Guid? workspace = null) => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> Factory(Guid? workspace = null) => new BusinessTestFactory().WithWebHostBuilder(b =>
         b.UseEnvironment("Testing").UseSetting("ConnectionStrings:DefaultConnection", postgres.GetConnectionString())
         .UseSetting("SourceCollectionWorker:Enabled", "false").UseSetting("SourceCollectionScheduler:Enabled", "false")
         .ConfigureServices(s => { if (workspace is { } id) { s.RemoveAll<ICurrentWorkspaceProvider>(); s.AddScoped<ICurrentWorkspaceProvider>(_ => new FixedWorkspace(id)); } }));

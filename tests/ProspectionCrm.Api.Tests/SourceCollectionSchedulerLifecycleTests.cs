@@ -68,7 +68,7 @@ public sealed class SourceCollectionSchedulerLifecycleTests
     [InlineData("BatchSize", "501")]
     public void InvalidOptionsFailAtApplicationStartup(string key, string value)
     {
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseEnvironment("Testing")
+        using var factory = new BusinessTestFactory().WithWebHostBuilder(b => b.UseEnvironment("Testing")
             .UseSetting($"SourceCollectionScheduler:{key}", value));
         Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
     }
