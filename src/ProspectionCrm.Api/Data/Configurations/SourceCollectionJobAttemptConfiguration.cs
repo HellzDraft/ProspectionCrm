@@ -24,6 +24,8 @@ public sealed class SourceCollectionJobAttemptConfiguration : IEntityTypeConfigu
             t.HasCheckConstraint("CK_SourceCollectionJobAttempts_Http", "\"UpstreamStatusCode\" IS NULL OR \"UpstreamStatusCode\" BETWEEN 100 AND 599");
             t.HasCheckConstraint("CK_SourceCollectionJobAttempts_State", """
                 ("StatusCode" = 'running' AND "FinishedAt" IS NULL)
+                OR ("StatusCode" IN ('awaiting-result', 'result-received') AND "FinishedAt" IS NULL AND "SourceExecutionId" IS NULL AND "ErrorCode" IS NULL)
+                OR ("StatusCode" = 'dispatch-unknown' AND "FinishedAt" IS NULL AND "SourceExecutionId" IS NULL AND "ErrorCode" IS NOT NULL AND "ErrorCode" = 'RemoteDispatchUnknown')
                 OR ("StatusCode" = 'succeeded' AND "FinishedAt" IS NOT NULL AND "SourceExecutionId" IS NOT NULL AND "ErrorCode" IS NULL)
                 OR ("StatusCode" IN ('failed', 'cancelled') AND "FinishedAt" IS NOT NULL)
                 """);

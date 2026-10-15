@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.Integrations;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Collection;
 
 namespace ProspectionCrm.Api.Services.Integrations;
 
@@ -13,7 +14,7 @@ public enum IntegrationTransportOutcome { Acknowledged, Failed, Unknown }
 public enum IntegrationReception { Recorded, AlreadyRecorded }
 
 // All updates use untracked reads and SQL in their own transaction; no unrelated tracked changes are saved.
-public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock)
+public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock, RemoteCollectionState? collections = null)
 {
     public async Task<IntegrationOperation> CreateProbeAsync(Guid workspaceId, Guid? connectionId = null, CancellationToken token = default)
     {
@@ -37,6 +38,7 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
     public async Task<IntegrationCommandEnvelope> CommandAsync(Guid workspaceId, Guid operationId, CancellationToken token = default)
     {
         var op = await FindAsync(workspaceId, operationId, token) ?? throw Conflict("operation-not-found");
+        RequireProbe(op);
         return new(op.Version, op.CommandMessageId, op.Id, op.CorrelationId, op.Type, new(op.ProbeId));
     }
 
@@ -45,6 +47,7 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
     {
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var op = await LockAsync(workspaceId, operationId, token);
+        RequireProbe(op);
         ExpectRevision(op, expectedRevision);
         if (op.StatusCode is not ("pending" or "awaiting-result")) throw Conflict("operation-state-conflict");
         if (await db.IntegrationAttempts.AnyAsync(x => x.OperationId == op.Id && x.StatusCode == "started", token))
@@ -81,6 +84,8 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
 
     public async Task<IntegrationReception> ReceiveAsync(IntegrationAccess access, string json, CancellationToken token = default)
     {
+        if (CollectionIntegrationContracts.IsCollection(Encoding.UTF8.GetBytes(json)))
+            return await (collections ?? throw Conflict("collection-receiver-unavailable")).ReceiveAsync(access, json, token);
         var envelope = IntegrationContracts.ParseResult(json);
         var canonical = IntegrationContracts.Serialize(envelope);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
@@ -126,6 +131,7 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
     {
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var op = await LockAsync(workspaceId, operationId, token);
+        RequireProbe(op);
         ExpectRevision(op, expectedRevision);
         if (op.StatusCode != "result-received") throw Conflict("operation-state-conflict");
         var receipt = await db.IntegrationReceipts.AsNoTracking().SingleAsync(x => x.OperationId == op.Id, token);
@@ -173,6 +179,8 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
 
     private static void ExpectRevision(IntegrationOperation op, long expected)
     { if (op.Revision != expected) throw Conflict("operation-revision-conflict"); }
+    private static void RequireProbe(IntegrationOperation op)
+    { if (op.Type != IntegrationContracts.ProbeType) throw Conflict("operation-type-conflict"); }
     private static IntegrationConflictException Conflict(string code) => new(code);
     private DateTimeOffset Now(DateTimeOffset floor = default)
     { var now = clock.GetUtcNow().ToUniversalTime(); return now < floor ? floor : now; }

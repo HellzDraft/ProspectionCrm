@@ -13,7 +13,8 @@ public sealed class SourceCollectionJobService(ProspectionCrmDbContext db, ICurr
 {
     private static readonly Expression<Func<SourceCollectionJob, SourceCollectionJobDto>> Projection = x => new(
         x.Id, x.WorkspaceId, x.SavedSearchId, x.PipelineId, x.PipelineStageId, x.TriggerTypeCode, x.StatusCode,
-        x.EnqueuedAt, x.AvailableAt, x.StartedAt, x.FinishedAt, x.AttemptCount, x.SourceExecutionId, x.ErrorCode);
+        x.EnqueuedAt, x.AvailableAt, x.StartedAt, x.FinishedAt, x.AttemptCount, x.SourceExecutionId, x.ErrorCode,
+        x.RemoteIntent == null ? null : x.RemoteIntent.OperationId);
 
     public async Task<SourceCollectionJobResult<SourceCollectionJobDto>> EnqueueAsync(Guid savedSearchId,
         EnqueueSourceCollectionJobRequest request, CancellationToken token)
@@ -49,7 +50,8 @@ public sealed class SourceCollectionJobService(ProspectionCrmDbContext db, ICurr
             db.ChangeTracker.Clear();
             var existing = await db.SourceCollectionJobs.AsNoTracking().Where(x => x.WorkspaceId == workspaceId
                 && x.SavedSearchId == savedSearchId && x.PipelineStageId == request.PipelineStageId
-                && (x.StatusCode == "queued" || x.StatusCode == "running")).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(token);
+                && (x.StatusCode == "queued" || x.StatusCode == "running" || x.StatusCode == "awaiting-result"
+                    || x.StatusCode == "dispatch-unknown" || x.StatusCode == "result-received")).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(token);
             return new(SourceCollectionJobStatus.Conflict, Code: "CollectionJobAlreadyPending", ExistingJobId: existing);
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
@@ -74,7 +76,7 @@ public sealed class SourceCollectionJobService(ProspectionCrmDbContext db, ICurr
         string? statusCode, Guid? savedSearchId, string? triggerTypeCode, CancellationToken token)
     {
         if (offset < 0 || limit is < 1 or > 200) return new(SourceCollectionJobStatus.InvalidRequest, Code: "InvalidPagination");
-        if (statusCode is not (null or "queued" or "running" or "succeeded" or "failed" or "cancelled"))
+        if (statusCode is not (null or "queued" or "running" or "awaiting-result" or "dispatch-unknown" or "result-received" or "succeeded" or "failed" or "cancelled"))
             return new(SourceCollectionJobStatus.InvalidRequest, Code: "InvalidStatusCode");
         if (triggerTypeCode is not (null or "manual" or "scheduled" or "event" or "retry"))
             return new(SourceCollectionJobStatus.InvalidRequest, Code: "InvalidTriggerTypeCode");
@@ -95,11 +97,25 @@ public sealed class SourceCollectionJobService(ProspectionCrmDbContext db, ICurr
         var workspaceId = await WorkspaceAsync(token);
         if (workspaceId is null) return Unavailable<bool>();
         var query = db.SourceCollectionJobs.Where(x => x.Id == id && x.WorkspaceId == workspaceId);
-        var now = DateTimeOffset.UtcNow;
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
         // Conditional UPDATE locks and rechecks the current row, including after a concurrent cancellation/claim.
-        var changed = await query.Where(x => x.StatusCode == "queued").ExecuteUpdateAsync(s =>
-            s.SetProperty(x => x.StatusCode, "cancelled").SetProperty(x => x.FinishedAt, now), token);
-        if (changed == 1) return new(SourceCollectionJobStatus.Succeeded, true);
+        var changed = await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "SourceCollectionJobs" SET "StatusCode" = 'cancelled',
+                "FinishedAt" = GREATEST(statement_timestamp(), "StartedAt"), "ErrorCode" = NULL
+            WHERE "Id" = {id} AND "WorkspaceId" = {workspaceId}
+                AND "StatusCode" IN ('queued', 'awaiting-result', 'dispatch-unknown', 'result-received')
+            """, token);
+        if (changed == 1)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "SourceCollectionJobAttempts" SET "StatusCode" = 'cancelled',
+                    "FinishedAt" = GREATEST(statement_timestamp(), "StartedAt"), "ErrorCode" = NULL
+                WHERE "JobId" = {id} AND "WorkspaceId" = {workspaceId}
+                    AND "StatusCode" IN ('awaiting-result', 'dispatch-unknown', 'result-received')
+                """, token);
+            await transaction.CommitAsync(token);
+            return new(SourceCollectionJobStatus.Succeeded, true);
+        }
         var status = await query.AsNoTracking().Select(x => x.StatusCode).SingleOrDefaultAsync(token);
         return status switch
         {

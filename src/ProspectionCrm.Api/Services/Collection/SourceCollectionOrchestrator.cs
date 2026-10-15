@@ -33,6 +33,7 @@ public sealed class SourceCollectionOrchestrator(
         var resolved = await resolver.ResolveAsync(workspaceId, savedSearchId, pipelineStageId, token);
         if (resolved.Error is { } validationError) return new(validationError.StatusCode, Error: validationError);
         var (search, source, pipeline, stage, adapter, context) = resolved.Value!;
+        if (adapter is null) return new(409, Error: new("RemoteCollectionRequiresJob", 409));
         var fingerprint = CollectionFingerprint.Create(search, source, pipeline, stage);
         var snapshot = IngestionHistory.Context(source, search, pipeline, stage);
         // All reads are materialized/no-tracking. EF has closed its connection and there is no transaction.

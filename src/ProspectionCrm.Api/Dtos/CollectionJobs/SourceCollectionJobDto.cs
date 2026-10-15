@@ -17,7 +17,7 @@ public sealed class EnqueueSourceCollectionJobRequest : IValidatableObject
 public sealed record SourceCollectionJobDto(Guid Id, Guid WorkspaceId, Guid SavedSearchId, Guid PipelineId,
     Guid PipelineStageId, string TriggerTypeCode, string StatusCode, DateTimeOffset EnqueuedAt,
     DateTimeOffset AvailableAt, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, int AttemptCount,
-    Guid? SourceExecutionId, string? ErrorCode);
+    Guid? SourceExecutionId, string? ErrorCode, Guid? IntegrationOperationId = null);
 
 public sealed record SourceCollectionJobsPageDto(int Offset, int Limit, int TotalCount, bool HasMore,
     IReadOnlyList<SourceCollectionJobDto> Items);

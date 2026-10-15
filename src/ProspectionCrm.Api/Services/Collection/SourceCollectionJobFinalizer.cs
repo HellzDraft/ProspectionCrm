@@ -6,11 +6,14 @@ namespace ProspectionCrm.Api.Services.Collection;
 
 // Caller holds the job row lock until commit. Used by both normal completion and recovery.
 public sealed class SourceCollectionJobFinalizer(ProspectionCrmDbContext db, SourceCollectionRetryPolicy policy,
-    ILogger<SourceCollectionJobFinalizer> logger)
+    ILogger<SourceCollectionJobFinalizer> logger, RemoteCollectionState? remote = null)
 {
     public async Task FinishAsync(SourceCollectionJob job, string? errorCode, bool recovering, CancellationToken token)
     {
         if (db.Database.CurrentTransaction is null) throw new InvalidOperationException("Finalization requires a transaction.");
+        if (remote is not null && await remote.FinishAsync(job, errorCode, policy, token)) return;
+        if (remote is null && await db.RemoteCollectionIntents.AnyAsync(x => x.JobId == job.Id, token))
+            throw new InvalidOperationException("Remote collection finalization is not configured.");
         var attempt = await db.SourceCollectionJobAttempts.SingleOrDefaultAsync(x => x.JobId == job.Id && x.AttemptNumber == job.AttemptCount, token);
         var execution = job.SourceExecutionId is null ? null : await db.SourceExecutions.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == job.SourceExecutionId && x.WorkspaceId == job.WorkspaceId, token);

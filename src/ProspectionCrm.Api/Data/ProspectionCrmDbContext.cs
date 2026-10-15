@@ -12,6 +12,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<IntegrationOperation> IntegrationOperations => Set<IntegrationOperation>();
     public DbSet<IntegrationAttempt> IntegrationAttempts => Set<IntegrationAttempt>();
     public DbSet<IntegrationReceipt> IntegrationReceipts => Set<IntegrationReceipt>();
+    public DbSet<RemoteCollectionIntent> RemoteCollectionIntents => Set<RemoteCollectionIntent>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<Pipeline> Pipelines => Set<Pipeline>();

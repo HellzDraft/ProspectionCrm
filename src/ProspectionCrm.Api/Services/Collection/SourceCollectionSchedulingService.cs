@@ -59,7 +59,7 @@ public sealed class SourceCollectionSchedulingService(ProspectionCrmDbContext db
                         VALUES ({jobId}, {search.WorkspaceId}, {search.Id}, {search.PipelineId}, {schedule.PipelineStageId},
                             'scheduled', 'queued', {now}, {now}, 0)
                         ON CONFLICT ("WorkspaceId", "SavedSearchId", "PipelineStageId")
-                            WHERE "StatusCode" IN ('queued', 'running') DO NOTHING
+                            WHERE "StatusCode" IN ('queued', 'running', 'awaiting-result', 'dispatch-unknown', 'result-received') DO NOTHING
                         """, token);
                     // Compute after INSERT in case uniqueness arbitration had to wait for another transaction.
                     var advancedAt = await db.Database.SqlQuery<DateTimeOffset>($"SELECT statement_timestamp() AS \"Value\"").SingleAsync(token);

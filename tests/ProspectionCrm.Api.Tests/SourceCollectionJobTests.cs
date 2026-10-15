@@ -80,11 +80,12 @@ public sealed class SourceCollectionJobTests : PersistentSourceIdentityFixture
         Assert.Equal("manual", job.TriggerTypeCode); Assert.Equal("queued", job.StatusCode); Assert.Equal(0, job.AttemptCount);
         Assert.InRange(job.EnqueuedAt, before, DateTimeOffset.UtcNow); Assert.Equal(job.EnqueuedAt, job.AvailableAt);
         Assert.Null(job.StartedAt); Assert.Null(job.FinishedAt); Assert.Null(job.SourceExecutionId); Assert.Null(job.ErrorCode);
+        Assert.Null(job.IntegrationOperationId);
         // A new application scope reads the persisted command; no worker has consumed it.
         using var secondFactory = Factory(); using var secondClient = Client(secondFactory);
         using var read = await secondClient.GetAsync($"{Jobs}/{job.Id}"); Assert.Equal(HttpStatusCode.OK, read.StatusCode);
         var json = await read.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(new[] { "attemptCount", "availableAt", "enqueuedAt", "errorCode", "finishedAt", "id", "pipelineId", "pipelineStageId",
+        Assert.Equal(new[] { "attemptCount", "availableAt", "enqueuedAt", "errorCode", "finishedAt", "id", "integrationOperationId", "pipelineId", "pipelineStageId",
             "savedSearchId", "sourceExecutionId", "startedAt", "statusCode", "triggerTypeCode", "workspaceId" },
             json.EnumerateObject().Select(x => x.Name).Order().ToArray());
         var stored = json.Deserialize<SourceCollectionJobDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;

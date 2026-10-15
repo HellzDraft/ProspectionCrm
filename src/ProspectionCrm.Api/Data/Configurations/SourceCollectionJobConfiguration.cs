@@ -33,7 +33,7 @@ public sealed class SourceCollectionJobConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(x => new { x.WorkspaceId, x.SavedSearchId, x.StatusCode, x.EnqueuedAt });
         builder.HasIndex(x => x.SourceExecutionId).IsUnique().HasFilter("\"SourceExecutionId\" IS NOT NULL");
         builder.HasIndex(x => new { x.WorkspaceId, x.SavedSearchId, x.PipelineStageId })
-            .IsUnique().HasDatabaseName(ActiveIndex).HasFilter("\"StatusCode\" IN ('queued', 'running')");
+            .IsUnique().HasDatabaseName(ActiveIndex).HasFilter("\"StatusCode\" IN ('queued', 'running', 'awaiting-result', 'dispatch-unknown', 'result-received')");
         builder.ToTable("SourceCollectionJobs", table =>
         {
             table.HasCheckConstraint("CK_SourceCollectionJobs_Lease", """
@@ -43,7 +43,7 @@ public sealed class SourceCollectionJobConfiguration : IEntityTypeConfiguration<
                 OR ("StatusCode" <> 'running' AND "LeaseToken" IS NULL AND "LeaseExpiresAt" IS NULL)
                 """);
             table.HasCheckConstraint("CK_SourceCollectionJobs_TriggerTypeCode", "\"TriggerTypeCode\" IN ('manual', 'scheduled', 'event', 'retry')");
-            table.HasCheckConstraint("CK_SourceCollectionJobs_StatusCode", "\"StatusCode\" IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')");
+            table.HasCheckConstraint("CK_SourceCollectionJobs_StatusCode", "\"StatusCode\" IN ('queued', 'running', 'awaiting-result', 'dispatch-unknown', 'result-received', 'succeeded', 'failed', 'cancelled')");
             table.HasCheckConstraint("CK_SourceCollectionJobs_AttemptCount", "\"AttemptCount\" >= 0");
             table.HasCheckConstraint("CK_SourceCollectionJobs_AvailableAt", "\"AvailableAt\" >= \"EnqueuedAt\"");
             table.HasCheckConstraint("CK_SourceCollectionJobs_StartedAt", "\"StartedAt\" IS NULL OR \"StartedAt\" >= \"AvailableAt\"");
@@ -51,6 +51,8 @@ public sealed class SourceCollectionJobConfiguration : IEntityTypeConfiguration<
             table.HasCheckConstraint("CK_SourceCollectionJobs_State", """
                 ("StatusCode" = 'queued' AND "StartedAt" IS NULL AND "FinishedAt" IS NULL AND "SourceExecutionId" IS NULL AND "ErrorCode" IS NULL)
                 OR ("StatusCode" = 'running' AND "StartedAt" IS NOT NULL AND "FinishedAt" IS NULL AND "ErrorCode" IS NULL)
+                OR ("StatusCode" IN ('awaiting-result', 'result-received') AND "StartedAt" IS NOT NULL AND "FinishedAt" IS NULL AND "SourceExecutionId" IS NULL AND "ErrorCode" IS NULL AND "AttemptCount" > 0)
+                OR ("StatusCode" = 'dispatch-unknown' AND "StartedAt" IS NOT NULL AND "FinishedAt" IS NULL AND "SourceExecutionId" IS NULL AND "ErrorCode" IS NOT NULL AND "ErrorCode" = 'RemoteDispatchUnknown' AND "AttemptCount" > 0)
                 OR ("StatusCode" = 'succeeded' AND "StartedAt" IS NOT NULL AND "FinishedAt" IS NOT NULL AND "SourceExecutionId" IS NOT NULL AND "ErrorCode" IS NULL)
                 OR ("StatusCode" = 'failed' AND "StartedAt" IS NOT NULL AND "FinishedAt" IS NOT NULL AND "ErrorCode" IS NOT NULL)
                 OR ("StatusCode" = 'cancelled' AND "FinishedAt" IS NOT NULL)

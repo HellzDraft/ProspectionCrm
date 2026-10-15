@@ -10,7 +10,7 @@ public interface ISourceCollectionJobRecovery
 }
 
 public sealed class SourceCollectionJobRecovery(ProspectionCrmDbContext db, SourceCollectionJobFinalizer finalizer,
-    IOptions<SourceCollectionWorkerOptions> options)
+    IOptions<SourceCollectionWorkerOptions> options, RemoteCollectionState? remote = null)
     : ISourceCollectionJobRecovery
 {
     public async Task<int> RecoverAsync(CancellationToken token)
@@ -42,6 +42,7 @@ public sealed class SourceCollectionJobRecovery(ProspectionCrmDbContext db, Sour
             if (!acquired) continue;
             await finalizer.FinishAsync(job, null, recovering: true, token); count++;
         }
+        if (remote is not null) count += await remote.RecoverDetachedAttemptsAsync(token);
         await transaction.CommitAsync(token); return count;
     }
 }

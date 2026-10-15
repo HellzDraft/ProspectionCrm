@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 using ProspectionCrm.Api.Security;
+using ProspectionCrm.Api.Dtos.Integrations;
 
 namespace ProspectionCrm.Api.Services.Integrations;
 
@@ -92,7 +93,7 @@ public sealed class IntegrationAuthenticationHandler(IOptionsMonitor<Authenticat
             || contentType.MediaType != "application/json" || contentType.Parameters.Any(p => !p.Name.Equals("charset", StringComparison.OrdinalIgnoreCase))
             || contentType.Parameters.Count > 1 || (contentType.CharSet is not null && !contentType.CharSet.Equals("utf-8", StringComparison.OrdinalIgnoreCase)))
         { Context.Items["integration-auth-status"] = 415; return AuthenticateResult.Fail("unsupported-body"); }
-        var bytes = new byte[4097];
+        var bytes = new byte[CollectionIntegrationContracts.MaxResultBytes + 1];
         var size = 0;
         while (size < bytes.Length)
         {
@@ -100,7 +101,9 @@ public sealed class IntegrationAuthenticationHandler(IOptionsMonitor<Authenticat
             if (read == 0) break;
             size += read;
         }
-        if (size > 4096) { Context.Items["integration-auth-status"] = 413; return AuthenticateResult.Fail("body-too-large"); }
+        if (size > CollectionIntegrationContracts.MaxResultBytes
+            || size > IntegrationContracts.MaxEnvelopeBytes && !CollectionIntegrationContracts.IsCollection(bytes.AsMemory(0, size)))
+        { Context.Items["integration-auth-status"] = 413; return AuthenticateResult.Fail("body-too-large"); }
         var body = bytes.AsSpan(0, size).ToArray();
         var expected = IntegrationSignature.Sign(Convert.FromBase64String(key.SecretBase64), IntegrationSignature.IncomingAudience,
             key.Id, timestamp, "POST", IntegrationSignature.ResultTarget, body);

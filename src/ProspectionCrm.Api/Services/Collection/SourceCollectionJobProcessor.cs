@@ -10,7 +10,8 @@ public interface ISourceCollectionJobProcessor
 
 public sealed class SourceCollectionJobProcessor(ISourceCollectionJobQueue queue, ISourceCollectionOrchestrator orchestrator,
     IServiceScopeFactory scopes, IOptions<SourceCollectionWorkerOptions> options,
-    ILogger<SourceCollectionJobProcessor> logger, ISourceCollectionJobRecovery recovery, SourceCollectionJobGuard guard) : ISourceCollectionJobProcessor
+    ILogger<SourceCollectionJobProcessor> logger, ISourceCollectionJobRecovery recovery, SourceCollectionJobGuard guard,
+    RemoteCollectionDispatcher? remote = null) : ISourceCollectionJobProcessor
 {
     public async Task<bool> ProcessNextAsync(CancellationToken token)
     {
@@ -34,9 +35,14 @@ public sealed class SourceCollectionJobProcessor(ISourceCollectionJobQueue queue
         try
         {
             processing.Token.ThrowIfCancellationRequested();
-            var attempt = new CollectionJobAttempt(job.Id, job.LeaseToken!.Value, Guid.NewGuid(), job.TriggerTypeCode);
-            var result = await orchestrator.CollectAsync(job.WorkspaceId, job.SavedSearchId, job.PipelineStageId, attempt, processing.Token);
-            errorCode = result.Error?.Code;
+            var dispatched = remote is null ? new RemoteDispatchResult(false) : await remote.TryDispatchAsync(job, processing.Token);
+            if (dispatched.Handled) errorCode = dispatched.ErrorCode;
+            else
+            {
+                var attempt = new CollectionJobAttempt(job.Id, job.LeaseToken!.Value, Guid.NewGuid(), job.TriggerTypeCode);
+                var result = await orchestrator.CollectAsync(job.WorkspaceId, job.SavedSearchId, job.PipelineStageId, attempt, processing.Token);
+                errorCode = result.Error?.Code;
+            }
         }
         catch (OperationCanceledException) when (processing.IsCancellationRequested)
         {

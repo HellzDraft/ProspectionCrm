@@ -45,7 +45,7 @@ public sealed class IntegrationController(IntegrationStore store, IntegrationPro
     {
         var workspace = await workspaceProvider.GetCurrentWorkspaceIdAsync(token);
         var op = await store.FindAsync(workspace, id, token);
-        if (op is null) return NotFound();
+        if (op is null || op.Type != IntegrationContracts.ProbeType) return NotFound();
         return Ok(new { operation = op, attempts = await db.IntegrationAttempts.AsNoTracking().Where(x => x.OperationId == id)
             .OrderBy(x => x.Number).ToListAsync(token), receipt = await db.IntegrationReceipts.AsNoTracking().Where(x => x.OperationId == id)
             .Select(x => new { x.MessageId, x.ReceivedAt, x.ProcessedAt }).SingleOrDefaultAsync(token) });

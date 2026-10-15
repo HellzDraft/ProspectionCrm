@@ -24,4 +24,5 @@ public class SourceCollectionJob
     public Pipeline Pipeline { get; set; } = null!;
     public PipelineStage PipelineStage { get; set; } = null!;
     public SourceExecution? SourceExecution { get; set; }
+    public RemoteCollectionIntent? RemoteIntent { get; set; }
 }

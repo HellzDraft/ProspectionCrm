@@ -68,7 +68,7 @@ public sealed class AutomationRuntimeMigrationTests : IAsyncLifetime
 
     private static async Task AssertCurrent(ProspectionCrmDbContext db)
     {
-        Assert.Equal(IntegrationSecurityMigrationTests.Current, db.Database.GetMigrations().Last());
+        Assert.Equal(RemoteCollectionMigrationTests.Current, db.Database.GetMigrations().Last());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
     }
     private static Task<string[]> Snapshot(ProspectionCrmDbContext db) => db.Database.SqlQuery<string>($"""

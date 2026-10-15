@@ -11,6 +11,8 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
     {
         b.HasKey(x => x.Id);
         b.HasIndex(x => x.CommandMessageId).IsUnique();
+        b.HasIndex(x => new { x.WorkspaceId, x.ConnectionId, x.Id, x.Type }).IsUnique()
+            .HasDatabaseName("UX_IntegrationOperations_CollectionBinding");
         b.HasIndex(x => new { x.WorkspaceId, x.StatusCode, x.CreatedAt });
         b.HasOne<Workspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.Type).HasMaxLength(50).IsRequired();
@@ -19,7 +21,10 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
         b.ToTable("IntegrationOperations", t =>
         {
             t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
-            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND \"Type\" = 'technical.probe'");
+            t.HasCheckConstraint("CK_IntegrationOperations_Contract", """
+                "Version" = 1 AND (("Type" = 'technical.probe' AND "ProbeId" <> '00000000-0000-0000-0000-000000000000'::uuid)
+                OR ("Type" = 'collection.request' AND "ConnectionId" IS NOT NULL AND "ProbeId" = '00000000-0000-0000-0000-000000000000'::uuid))
+                """);
             t.HasCheckConstraint("CK_IntegrationOperations_Status", "\"StatusCode\" IN ('pending','awaiting-result','result-received','succeeded','failed')");
             t.HasCheckConstraint("CK_IntegrationOperations_Revision", "\"Revision\" >= 0");
             t.HasCheckConstraint("CK_IntegrationOperations_Completion", """
@@ -30,7 +35,6 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
                 "Id" <> '00000000-0000-0000-0000-000000000000'::uuid
                 AND "CommandMessageId" <> '00000000-0000-0000-0000-000000000000'::uuid
                 AND "CorrelationId" <> '00000000-0000-0000-0000-000000000000'::uuid
-                AND "ProbeId" <> '00000000-0000-0000-0000-000000000000'::uuid
                 """);
         });
     }
@@ -71,7 +75,7 @@ public sealed class IntegrationReceiptConfiguration : IEntityTypeConfiguration<I
         b.Property(x => x.ContentSha256).HasMaxLength(64).IsRequired();
         b.ToTable("IntegrationReceipts", t =>
         {
-            t.HasCheckConstraint("CK_IntegrationReceipts_Content", $"octet_length(\"CanonicalContent\") BETWEEN 1 AND {IntegrationContracts.MaxEnvelopeBytes}");
+            t.HasCheckConstraint("CK_IntegrationReceipts_Content", $"octet_length(\"CanonicalContent\") BETWEEN 1 AND {CollectionIntegrationContracts.MaxResultBytes}");
             t.HasCheckConstraint("CK_IntegrationReceipts_Hash", "\"ContentSha256\" ~ '^[0-9a-f]{64}$'");
             t.HasCheckConstraint("CK_IntegrationReceipts_Dates", "\"ProcessedAt\" IS NULL OR \"ProcessedAt\" >= \"ReceivedAt\"");
             t.HasCheckConstraint("CK_IntegrationReceipts_Id", "\"MessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid");

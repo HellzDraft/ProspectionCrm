@@ -97,7 +97,7 @@ public sealed class IntegrationProbeService(IntegrationStore store, IntegrationT
     public async Task ResolveAsync(Guid workspace, Guid operation, Guid attemptId, CancellationToken token)
     {
         var attempt = await db.IntegrationAttempts.AsNoTracking().SingleOrDefaultAsync(x => x.OperationId == operation && x.Id == attemptId
-            && db.IntegrationOperations.Any(op => op.Id == operation && op.WorkspaceId == workspace), token);
+            && db.IntegrationOperations.Any(op => op.Id == operation && op.WorkspaceId == workspace && op.Type == IntegrationContracts.ProbeType), token);
         if (attempt is null) throw new IntegrationAccessException();
         if (attempt.StatusCode != "started" || clock.GetUtcNow() - attempt.StartedAt < TimeSpan.FromMinutes(2))
             throw new IntegrationConflictException("attempt-not-recoverable");

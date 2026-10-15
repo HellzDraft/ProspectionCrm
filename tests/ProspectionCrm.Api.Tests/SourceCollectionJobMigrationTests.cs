@@ -20,17 +20,18 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Equal(before, await Snapshot());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.Equal(BeforeJobs, migrations[^12]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^11]);
-        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^10]);
-        Assert.EndsWith("_Phase73CollectionRetries", migrations[^9]);
-        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^8]);
-        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^7]);
-        Assert.EndsWith("_Phase82AutomationJobs", migrations[^6]);
-        Assert.EndsWith("_Phase84AutomationExecutionRuntime", migrations[^5]);
-        Assert.EndsWith("_Phase85AutomationActionRequests", migrations[^4]);
-        Assert.Equal(AutomationRuntimeMigrationTests.Current, migrations[^3]);
-        Assert.Equal(IntegrationPersistenceMigrationTests.Current, migrations[^2]);
-        Assert.Equal(IntegrationSecurityMigrationTests.Current, migrations[^1]);
+        Assert.Equal(BeforeJobs, migrations[^13]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^12]);
+        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^11]);
+        Assert.EndsWith("_Phase73CollectionRetries", migrations[^10]);
+        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^9]);
+        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^8]);
+        Assert.EndsWith("_Phase82AutomationJobs", migrations[^7]);
+        Assert.EndsWith("_Phase84AutomationExecutionRuntime", migrations[^6]);
+        Assert.EndsWith("_Phase85AutomationActionRequests", migrations[^5]);
+        Assert.Equal(AutomationRuntimeMigrationTests.Current, migrations[^4]);
+        Assert.Equal(IntegrationPersistenceMigrationTests.Current, migrations[^3]);
+        Assert.Equal(IntegrationSecurityMigrationTests.Current, migrations[^2]);
+        Assert.Equal(RemoteCollectionMigrationTests.Current, migrations[^1]);
         Assert.Equal(migrations, await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         await AssertSchema();
@@ -57,7 +58,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var tables = new List<string>();
         await using (var command = new NpgsqlCommand("""
             SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-            AND tablename NOT IN ('__EFMigrationsHistory', 'IntegrationOperations', 'IntegrationAttempts', 'IntegrationReceipts', 'AutomationCircuitResets', 'AutomationActionRequests', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
+            AND tablename NOT IN ('__EFMigrationsHistory', 'RemoteCollectionIntents', 'IntegrationOperations', 'IntegrationAttempts', 'IntegrationReceipts', 'AutomationCircuitResets', 'AutomationActionRequests', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync())
             while (await reader.ReadAsync()) tables.Add(reader.GetString(0));

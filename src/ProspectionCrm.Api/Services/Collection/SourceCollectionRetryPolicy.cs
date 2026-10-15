@@ -9,6 +9,8 @@ public sealed class SourceCollectionRetryPolicy(IOptions<SourceCollectionWorkerO
         "UpstreamTimeout", "UpstreamTransportError", "DnsResolutionFailed", "UpstreamHttpError", "UpstreamTlsFailure",
         "CollectionWorkerStopping", "CollectionLeaseExpired", "CollectionCancelled", "RequestCancelled", "CollectionAbandoned",
         "CollectionRecoveryAmbiguous", "CollectionAttemptsExhausted", "CollectionWorkerError", "CollectionInternalError", "InvalidRequest",
+        "InvalidRemoteCriteria", "RemoteIntegrationDisabled", "RemoteConnectionMismatch", "RemoteContextChanged",
+        "RemoteDispatchFailed", "RemoteDispatchNotStarted", "RemoteDispatchBusy", "RemoteDispatchUnknown",
         "UnsupportedSourceType", "MissingFeedUrl", "InvalidRssCriteria", "UnsafeFeedUrl", "UnsafeRedirect",
         "UnsafeResolvedAddress", "TooManyRedirects", "ResponseTooLarge", "UnsupportedContentType", "InvalidFeed", "NoUsableFeedEntries"
     };
@@ -19,6 +21,7 @@ public sealed class SourceCollectionRetryPolicy(IOptions<SourceCollectionWorkerO
     public bool CanRetry(int attempt, string code, int? upstreamStatus) => attempt < options.Value.MaxAttempts &&
         (code is "UpstreamTimeout" or "UpstreamTransportError" or "DnsResolutionFailed"
             or "CollectionWorkerStopping" or "CollectionLeaseExpired" or "CollectionCancelled" or "RequestCancelled" or "CollectionAbandoned"
+            or "RemoteDispatchFailed" or "RemoteDispatchNotStarted" or "RemoteDispatchBusy"
         || code == "UpstreamHttpError" && upstreamStatus is 408 or 429 or 500 or 502 or 503 or 504);
 
     public TimeSpan Backoff(int attempt) => TimeSpan.FromSeconds(Math.Min(options.Value.MaxRetryDelaySeconds,

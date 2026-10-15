@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Dtos.Integrations;
 
 namespace ProspectionCrm.Api.Services.Collection;
 
@@ -9,7 +10,10 @@ public interface ISourceCollectionContextResolver
     Task<SourceCollectionContextResult> ResolveAsync(Guid workspaceId, Guid savedSearchId, Guid pipelineStageId, CancellationToken token);
 }
 public sealed record SourceCollectionContext(SavedSearch Search, SourceConfiguration Source, Pipeline Pipeline,
-    PipelineStage Stage, ISourceAdapter Adapter, SourceAdapterContext AdapterContext);
+    PipelineStage Stage, ISourceAdapter? Adapter, SourceAdapterContext AdapterContext)
+{
+    public bool IsRemote => Source.SourceTypeCode == CollectionIntegrationContracts.SourceType;
+}
 public sealed record SourceCollectionContextResult(SourceCollectionContext? Value, SourceAdapterError? Error = null);
 
 public sealed class SourceCollectionContextResolver(ProspectionCrmDbContext db, SourceAdapterRegistry adapters)
@@ -28,6 +32,12 @@ public sealed class SourceCollectionContextResolver(ProspectionCrmDbContext db, 
         if (!search.Enabled || search.ArchivedAt is not null || !source.Enabled || source.ArchivedAt is not null
             || pipeline.ArchivedAt is not null || stage.ArchivedAt is not null) return Fail("InactiveResource", 409);
         if (stage.PipelineId != pipeline.Id) return Fail("WrongPipeline", 409);
+        if (source.SourceTypeCode == CollectionIntegrationContracts.SourceType)
+        {
+            try { _ = CollectionIntegrationContracts.Criteria(search.CriteriaJson, Guid.NewGuid()); }
+            catch (IntegrationContractException) { return Fail("InvalidRemoteCriteria", 400); }
+            return new(new(search, source, pipeline, stage, null, new(search.SearchUrl, search.CriteriaJson)));
+        }
         var adapter = adapters.Find(source.SourceTypeCode);
         if (adapter is null) return Fail("UnsupportedSourceType", 409);
         var context = new SourceAdapterContext(search.SearchUrl, search.CriteriaJson);

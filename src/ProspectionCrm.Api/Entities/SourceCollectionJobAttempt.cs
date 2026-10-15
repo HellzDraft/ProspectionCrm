@@ -7,6 +7,7 @@ public sealed class SourceCollectionJobAttempt
     public Guid WorkspaceId { get; set; }
     public int AttemptNumber { get; set; }
     public DateTimeOffset StartedAt { get; set; }
+    // Terminal local attempt / remote failure or cancellation; an ACK never sets this timestamp.
     public DateTimeOffset? FinishedAt { get; set; }
     public string StatusCode { get; set; } = "running";
     public string? ErrorCode { get; set; }
