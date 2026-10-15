@@ -1,0 +1,85 @@
+{
+  "name": "Phase 9.3.3 - technical.probe local",
+  "active": false,
+  "nodes": [
+    {
+      "id": "8bada93f-62b9-4180-8f0c-248f95732793",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "899c575a-4bc0-4052-8d18-487181a96b12",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-technical-probe",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "3921a8b4-51e5-4a69-85f5-6c0ad7bbb9b9",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmProbe",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "dbc2c6dd-36d8-4ff6-b5f2-cf8e5f7a6f19",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}
