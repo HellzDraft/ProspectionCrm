@@ -1,0 +1,85 @@
+{
+  "name": "Phase 9.4.3 - deterministic remote collection",
+  "active": false,
+  "nodes": [
+    {
+      "id": "d2c3ba61-d3a7-44cd-9481-620c6042a76f",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "527d3996-2363-4a25-9ee6-dcfea24654d3",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-remote-collection-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "f577d1f8-9319-4037-9119-c96abd76a087",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmCollection",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e5be9115-1ead-412c-ac87-2eebfc56cd59",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}
