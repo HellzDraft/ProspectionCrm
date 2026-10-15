@@ -30,15 +30,23 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
     {
         var invalid = Validate(request);
         if (invalid is not null) return new(IngestionStatus.InvalidRequest, Error: invalid);
+        var remote = precondition as RemoteCollectionPrecondition;
         Guid workspaceId;
-        try { workspaceId = precondition?.Job is not null ? precondition.WorkspaceId
+        try { workspaceId = precondition?.Job is not null || remote is not null ? precondition!.WorkspaceId
             : await workspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken); }
         catch (InvalidOperationException)
         {
             return Reject(IngestionStatus.Conflict, IngestionErrorCode.WorkspaceUnavailable, "Exactly one active workspace is required.");
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        // Local ingestion owns its transaction. Remote result processing owns the outer
+        // transaction, including receipt/job completion, and is the only permitted participant.
+        await using var ownedTransaction = remote is null
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken) : null;
+        var transaction = ownedTransaction ?? dbContext.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("Remote ingestion requires an existing transaction.");
+        if (remote is not null)
+            await remote.ValidateAsync(dbContext, savedSearchId, request.PipelineStageId!.Value, cancellationToken);
         // Identity writers of the SAME workspace serialize. No global or table lock, and no
         // workspace NO KEY UPDATE lock that would unnecessarily block Phase 4 default/archive.
         await WorkspaceIdentityLock.AcquireAsync(dbContext, workspaceId, cancellationToken);
@@ -77,9 +85,9 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
 
         var execution = new SourceExecution
         {
-            Id = precondition?.Job?.ExecutionId ?? Guid.NewGuid(),
+            Id = remote?.ExecutionId ?? precondition?.Job?.ExecutionId ?? Guid.NewGuid(),
             WorkspaceId = workspaceId, SourceConfigurationId = configuration.Id, SavedSearchId = search.Id,
-            TriggerTypeCode = precondition?.Job?.TriggerTypeCode ?? "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
+            TriggerTypeCode = remote?.TriggerTypeCode ?? precondition?.Job?.TriggerTypeCode ?? "manual", StatusCode = "running", ItemsFound = request.Items!.Count,
             StartedAt = precondition?.StartedAt ?? DateTimeOffset.UtcNow,
             HistoryVersion = 1, ContractVersion = 1, NormalizationVersion = 1,
             TargetPipelineId = pipeline.Id, TargetPipelineStageId = stage.Id,
@@ -216,7 +224,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
             await dbContext.SaveChangesAsync(cancellationToken);
             // Return the persisted timestamp precision, identical to GET /source-executions.
             await dbContext.Entry(execution).ReloadAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (ownedTransaction is not null) await transaction.CommitAsync(cancellationToken);
             logger.LogInformation("Manual ingestion succeeded: {Created} created, {Updated} rediscovered, {Ignored} ignored",
                 execution.ItemsCreated, execution.ItemsUpdated, execution.ItemsIgnored);
             return new(IngestionStatus.Succeeded, new(ToDto(execution), outcomes));
@@ -224,13 +232,14 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         catch (IdentityConflict conflict)
         {
             var decision = conflict.Code == IngestionErrorCode.AmbiguousIdentity ? AmbiguousIdentity : MissingPersistentIdentity;
-            await FinishFailedAsync(transaction, execution, "failed", decision, conflict.Index, provisional,
+            await FinishFailedAsync(transaction, ownedTransaction is not null, execution, "failed", decision, conflict.Index, provisional,
                 conflict.Candidates is null ? null : JsonSerializer.Serialize(new { candidateOpportunityIds = conflict.Candidates }));
             return new(IngestionStatus.Conflict, Error: new(conflict.Code, conflict.Message, conflict.Index, execution.Id));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await FinishFailedAsync(transaction, execution, "cancelled", RequestCancelled, currentIndex, provisional);
+            if (remote is null)
+                await FinishFailedAsync(transaction, true, execution, "cancelled", RequestCancelled, currentIndex, provisional);
             throw;
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
@@ -239,16 +248,19 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
             ConstraintName: "UX_OpportunitySources_Workspace_SourceConfiguration_ExternalId" or "UX_OpportunitySources_Workspace_NormalizedSourceUrl"
         })
         {
-            await FinishFailedAsync(transaction, execution, "failed", ConcurrentIdentityChange, currentIndex, provisional);
+            await FinishFailedAsync(transaction, ownedTransaction is not null, execution, "failed", ConcurrentIdentityChange, currentIndex, provisional);
             return new(IngestionStatus.Conflict, Error: new(IngestionErrorCode.ConcurrentIdentityChange,
                 "A source identity was concurrently modified. The entire lot was rolled back.", ExecutionId: execution.Id));
         }
         catch (Exception exception)
         {
+            // An interrupted remote transaction must remain wholly retryable by an explicit
+            // human action. Only the controlled business conflicts above become terminal.
+            if (remote is not null) throw;
             if (precondition is null || precondition.Job is not null)
                 logger.LogError(exception, "Ingestion failed; rolling back business writes");
             else logger.LogError("Collection ingestion failed with {Code}; rolling back business writes", PersistenceFailure);
-            await FinishFailedAsync(transaction, execution, "failed", PersistenceFailure, currentIndex, provisional);
+            await FinishFailedAsync(transaction, true, execution, "failed", PersistenceFailure, currentIndex, provisional);
             return new(IngestionStatus.Failed, Error: new(IngestionErrorCode.PersistenceFailure,
                 "The ingestion could not be persisted. The entire lot was rolled back.", ExecutionId: execution.Id));
         }
@@ -297,7 +309,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
         return used;
     }
 
-    private async Task FinishFailedAsync(IDbContextTransaction transaction, SourceExecution execution, string status,
+    private async Task FinishFailedAsync(IDbContextTransaction transaction, bool commitTransaction, SourceExecution execution, string status,
         string error, int currentIndex, IReadOnlyDictionary<int, IngestionHistory.Provisional> provisional,
         string? rejectionDetails = null)
     {
@@ -345,7 +357,7 @@ public sealed class IngestionService(ProspectionCrmDbContext dbContext,
             }
         }
         await dbContext.SaveChangesAsync(cleanup.Token);
-        await transaction.CommitAsync(cleanup.Token);
+        if (commitTransaction) await transaction.CommitAsync(cleanup.Token);
         logger.LogWarning("Manual ingestion ended with {Status} and {ErrorCode}; all {ItemCount} business decisions rolled back",
             status, error, execution.ItemsFound);
     }

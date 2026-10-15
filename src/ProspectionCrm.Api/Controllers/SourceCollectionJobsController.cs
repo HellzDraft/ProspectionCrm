@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Authorization;
+using ProspectionCrm.Api.Security;
 using ProspectionCrm.Api.Dtos.CollectionJobs;
 using ProspectionCrm.Api.Services.Collection;
 
@@ -13,7 +15,8 @@ namespace ProspectionCrm.Api.Controllers;
 [ProducesResponseType<ProblemDetails>(404)]
 [ProducesResponseType<ProblemDetails>(409)]
 [ProducesResponseType<ProblemDetails>(500)]
-public sealed class SourceCollectionJobsController(ISourceCollectionJobService service) : ControllerBase
+public sealed class SourceCollectionJobsController(ISourceCollectionJobService service,
+    RemoteCollectionResultProcessor processor) : ControllerBase
 {
     [HttpPost("/api/saved-searches/{savedSearchId:guid}/collection-jobs")]
     [RequestSizeLimit(4096)]
@@ -48,6 +51,18 @@ public sealed class SourceCollectionJobsController(ISourceCollectionJobService s
     public async Task<ActionResult> Cancel(Guid id, CancellationToken token)
     {
         var result = await service.CancelAsync(id, token);
+        return result.Status == SourceCollectionJobStatus.Succeeded ? NoContent() : Failure(result);
+    }
+
+    [HttpPost("{id:guid}/process-result")]
+    [Authorize(AuthenticationSchemes = SecurityNames.Human)]
+    [ValidateAntiForgeryToken]
+    [ProducesResponseType(204)]
+    public async Task<ActionResult> ProcessResult(Guid id, CancellationToken token)
+    {
+        if (Request.ContentLength is > 0 || Request.Headers.ContainsKey("Transfer-Encoding"))
+            return Failure(new SourceCollectionJobResult<bool>(SourceCollectionJobStatus.InvalidRequest, Code: "InvalidRequest"));
+        var result = await processor.ProcessAsync(id, token);
         return result.Status == SourceCollectionJobStatus.Succeeded ? NoContent() : Failure(result);
     }
 

@@ -174,7 +174,7 @@ public sealed class RemoteCollectionState(ProspectionCrmDbContext db, ISourceCol
         if (db.Database.CurrentTransaction is null) throw new InvalidOperationException("Recovery requires a transaction.");
         var jobs = await db.SourceCollectionJobs.FromSqlRaw("""
             SELECT j.* FROM "SourceCollectionJobs" j
-            WHERE j."StatusCode" IN ('awaiting-result','dispatch-unknown','result-received','cancelled','failed')
+            WHERE j."StatusCode" IN ('awaiting-result','dispatch-unknown','result-received','cancelled','failed','succeeded')
                 AND EXISTS (SELECT 1 FROM "RemoteCollectionIntents" i JOIN "IntegrationAttempts" a ON a."OperationId" = i."OperationId"
                     WHERE i."JobId" = j."Id" AND a."StatusCode" = 'started')
             ORDER BY j."Id" LIMIT 8 FOR UPDATE OF j SKIP LOCKED
@@ -194,7 +194,7 @@ public sealed class RemoteCollectionState(ProspectionCrmDbContext db, ISourceCol
         return count;
     }
 
-    private async Task<SourceCollectionContext> ContextAsync(SourceCollectionJob job, CancellationToken token)
+    internal async Task<SourceCollectionContext> ContextAsync(SourceCollectionJob job, CancellationToken token)
     {
         // Consistent snapshot with resource mutation excluded until this short transaction commits.
         await db.Database.ExecuteSqlInterpolatedAsync($"""

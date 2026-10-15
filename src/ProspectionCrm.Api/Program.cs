@@ -105,6 +105,7 @@ builder.Services.AddScoped<SourceCollectionRetryPolicy>();
 builder.Services.AddScoped<SourceCollectionJobFinalizer>();
 builder.Services.AddScoped<RemoteCollectionState>();
 builder.Services.AddScoped<RemoteCollectionDispatcher>();
+builder.Services.AddScoped<RemoteCollectionResultProcessor>();
 builder.Services.AddScoped<SourceCollectionJobGuard>();
 builder.Services.AddScoped<ISourceCollectionJobRecovery, SourceCollectionJobRecovery>();
 builder.Services.AddScoped<ISourceCollectionJobProcessor, SourceCollectionJobProcessor>();
