@@ -11,7 +11,7 @@ public class EmailMessageService(ProspectionCrmDbContext dbContext, ICurrentWork
     public async Task<(IReadOnlyList<EmailMessageDto>? Messages, string? Error)> GetAllAsync(
         Guid? opportunityId = null, Guid? companyId = null, Guid? contactId = null,
         string? directionCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? emailAccountId = null)
     {
         if (directionCode is not (null or "inbound" or "outbound"))
             return (null, "DirectionCode must be inbound or outbound when provided.");
@@ -23,6 +23,7 @@ public class EmailMessageService(ProspectionCrmDbContext dbContext, ICurrentWork
         var workspaceId = await currentWorkspaceProvider.GetCurrentWorkspaceIdAsync(cancellationToken);
         var messages = await dbContext.EmailMessages.AsNoTracking()
             .Where(x => x.WorkspaceId == workspaceId
+                && (!emailAccountId.HasValue || x.EmailAccountId == emailAccountId.Value)
                 && (!opportunityId.HasValue || x.OpportunityId == opportunityId.Value)
                 && (!companyId.HasValue || x.CompanyId == companyId.Value)
                 && (!contactId.HasValue || x.ContactId == contactId.Value)
@@ -45,6 +46,7 @@ public class EmailMessageService(ProspectionCrmDbContext dbContext, ICurrentWork
     private static EmailMessageDto ToDto(EmailMessage message) => new()
     {
         Id = message.Id,
+        EmailAccountId = message.EmailAccountId,
         OpportunityId = message.OpportunityId,
         CompanyId = message.CompanyId,
         ContactId = message.ContactId,

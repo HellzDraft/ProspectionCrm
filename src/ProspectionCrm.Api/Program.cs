@@ -8,6 +8,7 @@ using ProspectionCrm.Api.Storage;
 using Serilog;
 using ProspectionCrm.Api.Services.Automation;
 using ProspectionCrm.Api.Services.Integrations;
+using ProspectionCrm.Api.Services.Email;
 
 var provisionOperator = args.Contains("--provision-operator", StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(provisionOperator ? [] : args);
@@ -43,6 +44,11 @@ builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IntegrationStore>();
+builder.Services.AddScoped<EmailAccountService>();
+builder.Services.AddScoped<InboundEmailImportService>();
+builder.Services.AddScoped<EmailSyncService>();
+builder.Services.AddScoped<EmailSyncDispatcher>();
+builder.Services.AddSingleton<IEmailSyncTransport, UnavailableEmailSyncTransport>();
 builder.Services.AddOptions<IntegrationOptions>().Bind(builder.Configuration.GetSection("Integrations"))
     .Validate<IOptions<OperatorOptions>>((options, human) => options.IsValid(human.Value), "Invalid integration security configuration.")
     .ValidateOnStart();
@@ -155,6 +161,8 @@ app.Use(async (context, next) =>
     try { await next(context); }
     catch (UnauthorizedAccessException) { context.Response.StatusCode = 403; }
     catch (IntegrationAccessException) { context.Response.StatusCode = 403; }
+    catch (EmailSyncException error)
+    { context.Response.StatusCode = error.Status; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
     catch (ProspectionCrm.Api.Dtos.Integrations.IntegrationContractException)
     { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { error = "invalid-integration-envelope" }); }
     catch (IntegrationConflictException error)

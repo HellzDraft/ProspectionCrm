@@ -7,6 +7,6 @@ public interface IEmailMessageService
     Task<(IReadOnlyList<EmailMessageDto>? Messages, string? Error)> GetAllAsync(
         Guid? opportunityId = null, Guid? companyId = null, Guid? contactId = null,
         string? directionCode = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, Guid? emailAccountId = null);
     Task<EmailMessageDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 }

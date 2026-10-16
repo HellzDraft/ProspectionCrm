@@ -453,7 +453,7 @@ public sealed class RemoteCollectionResultProcessingTests(AutomationJobDatabase 
         await using var db = Db(); Assert.Equal(1, await db.SourceExecutions.CountAsync(x => x.WorkspaceId == s.Workspace));
         Assert.Equal(2, await db.Opportunities.CountAsync(x => x.WorkspaceId == s.Workspace));
         Assert.False(db.Database.HasPendingModelChanges());
-        Assert.Equal(RemoteCollectionMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(EmailSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
     }
 
     [Theory]

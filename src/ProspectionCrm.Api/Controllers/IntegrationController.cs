@@ -52,8 +52,9 @@ public sealed class IntegrationController(IntegrationStore store, IntegrationPro
     }
 
     [HttpGet("pending-receipts")]
-    public async Task<IActionResult> Pending(CancellationToken token) => Ok(await store.PendingReceiptsAsync(
-        await workspaceProvider.GetCurrentWorkspaceIdAsync(token), token: token));
+    public async Task<IActionResult> Pending(CancellationToken token) => Ok((await store.PendingReceiptsAsync(
+        await workspaceProvider.GetCurrentWorkspaceIdAsync(token), token: token))
+        .Select(x => new { x.MessageId, x.OperationId, x.ReceivedAt, x.ProcessedAt }));
 
     [HttpPost("probes/{id:guid}/send")]
     public async Task<IActionResult> Send(Guid id, RevisionRequest request, CancellationToken token) => Ok(new

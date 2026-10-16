@@ -4,6 +4,7 @@ public class EmailMessage
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid WorkspaceId { get; set; }
+    public Guid? EmailAccountId { get; set; }
     public Guid? OpportunityId { get; set; }
     public Guid? CompanyId { get; set; }
     public Guid? ContactId { get; set; }
@@ -20,6 +21,7 @@ public class EmailMessage
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public Workspace Workspace { get; set; } = null!;
+    public EmailAccount? EmailAccount { get; set; }
     public Opportunity? Opportunity { get; set; }
     public Company? Company { get; set; }
     public Contact? Contact { get; set; }

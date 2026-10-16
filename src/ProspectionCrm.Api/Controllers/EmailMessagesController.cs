@@ -12,9 +12,9 @@ public class EmailMessagesController(IEmailMessageService service) : ControllerB
     public async Task<ActionResult<IReadOnlyList<EmailMessageDto>>> GetAll(CancellationToken cancellationToken,
         [FromQuery] Guid? opportunityId = null, [FromQuery] Guid? companyId = null,
         [FromQuery] Guid? contactId = null, [FromQuery] string? directionCode = null,
-        [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null)
+        [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null, [FromQuery] Guid? emailAccountId = null)
     {
-        var (messages, error) = await service.GetAllAsync(opportunityId, companyId, contactId, directionCode, from, to, cancellationToken);
+        var (messages, error) = await service.GetAllAsync(opportunityId, companyId, contactId, directionCode, from, to, cancellationToken, emailAccountId);
         return error is null ? Ok(messages) : Problem(detail: error, statusCode: StatusCodes.Status400BadRequest);
     }
 

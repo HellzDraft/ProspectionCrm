@@ -44,7 +44,7 @@ public sealed class RemoteCollectionMigrationTests : PersistentSourceIdentityFix
         await store.ReceiveAsync(new(setup.Workspace, op.ConnectionId!.Value), result);
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db)); Assert.Empty(await db.RemoteCollectionIntents.ToListAsync());
-        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(EmailSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         await db.GetService<IMigrator>().MigrateAsync(IntegrationSecurityMigrationTests.Current); Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
         Assert.Empty(await db.RemoteCollectionIntents.ToListAsync()); Assert.False(db.Database.HasPendingModelChanges());
@@ -122,7 +122,12 @@ public sealed class RemoteCollectionMigrationTests : PersistentSourceIdentityFix
         Assert.Equal("23514", Assert.IsType<PostgresException>(unknownWithoutCode.InnerException).SqlState); db.ChangeTracker.Clear();
         // No destructive downgrade once the new durable history exists.
         await Assert.ThrowsAsync<PostgresException>(() => db.GetService<IMigrator>().MigrateAsync(IntegrationSecurityMigrationTests.Current));
+        // Phase951 is empty here, so its Down commits before Phase941 refuses to erase its history.
         Assert.Single(await db.RemoteCollectionIntents.ToListAsync()); Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(new[] { EmailSyncMigrationTests.Current }, await db.Database.GetPendingMigrationsAsync());
+        await db.Database.MigrateAsync();
+        Assert.Single(await db.RemoteCollectionIntents.ToListAsync());
+        Assert.Equal(EmailSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.False(db.Database.HasPendingModelChanges());
     }
 

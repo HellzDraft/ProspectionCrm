@@ -20,6 +20,9 @@ public class EmailMessageConfiguration : IEntityTypeConfiguration<EmailMessage>
         builder.Property(x => x.BodyText).HasColumnType("text");
         builder.HasOne(x => x.Workspace).WithMany(x => x.EmailMessages)
             .HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.EmailAccount).WithMany()
+            .HasForeignKey(x => new { x.WorkspaceId, x.EmailAccountId, x.ProviderCode })
+            .HasPrincipalKey(x => new { x.WorkspaceId, x.Id, x.ProviderCode }).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Opportunity).WithMany(x => x.EmailMessages)
             .HasForeignKey(x => x.OpportunityId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne(x => x.Company).WithMany(x => x.EmailMessages)
@@ -33,7 +36,10 @@ public class EmailMessageConfiguration : IEntityTypeConfiguration<EmailMessage>
         builder.HasIndex(x => x.ContactId);
         builder.HasIndex(x => new { x.WorkspaceId, x.ProviderCode, x.ExternalMessageId }).IsUnique()
             .HasDatabaseName("UX_EmailMessages_Workspace_Provider_ExternalMessage")
-            .HasFilter("\"ExternalMessageId\" IS NOT NULL");
+            .HasFilter("\"ExternalMessageId\" IS NOT NULL AND \"EmailAccountId\" IS NULL");
+        builder.HasIndex(x => new { x.WorkspaceId, x.EmailAccountId, x.ExternalMessageId }).IsUnique()
+            .HasDatabaseName("UX_EmailMessages_Account_ExternalMessage")
+            .HasFilter("\"EmailAccountId\" IS NOT NULL AND \"ExternalMessageId\" IS NOT NULL");
         builder.ToTable("EmailMessages", table =>
         {
             table.HasCheckConstraint("CK_EmailMessages_DirectionCode", "\"DirectionCode\" IN ('inbound', 'outbound')");

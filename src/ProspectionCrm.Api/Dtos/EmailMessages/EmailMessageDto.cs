@@ -3,6 +3,7 @@ namespace ProspectionCrm.Api.Dtos.EmailMessages;
 public class EmailMessageDto
 {
     public Guid Id { get; set; }
+    public Guid? EmailAccountId { get; set; }
     public Guid? OpportunityId { get; set; }
     public Guid? CompanyId { get; set; }
     public Guid? ContactId { get; set; }
