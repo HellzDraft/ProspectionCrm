@@ -27,9 +27,9 @@ public sealed class IntegrationTransport(HttpClient client, TimeProvider clock)
         MaxResponseHeadersLength = 8, ConnectTimeout = TimeSpan.FromSeconds(10),
         PooledConnectionLifetime = TimeSpan.FromMinutes(2)
     };
-    public async Task<IntegrationTransportOutcome> SendAsync(IntegrationOptions config, byte[] body, CancellationToken token)
+    public async Task<IntegrationTransportOutcome> SendAsync(IntegrationOptions config, byte[] body, CancellationToken token, Uri? endpoint = null)
     {
-        var destination = new Uri(config.Endpoint);
+        var destination = endpoint ?? new Uri(config.Endpoint);
         using var request = new HttpRequestMessage(HttpMethod.Post, destination);
         request.Content = new ByteArrayContent(body);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };

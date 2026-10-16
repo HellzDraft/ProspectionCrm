@@ -3,7 +3,7 @@ using ProspectionCrm.Api.Services.Integrations;
 
 namespace ProspectionCrm.Api.Services.Email;
 
-// No provider/HTTP implementation is installed in 9.5.1. Tests inject an in-memory transport.
+// Disabled by default; an explicitly configured adapter delegates to the shared integration transport.
 public interface IEmailSyncTransport
 {
     bool IsAvailable { get; }

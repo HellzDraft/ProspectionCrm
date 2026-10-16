@@ -31,7 +31,7 @@ public sealed class EmailAccountsController(EmailAccountService accounts, EmailS
 }
 
 [ApiController, Route("api/email-sync-jobs")]
-public sealed class EmailSyncJobsController(EmailSyncService sync, ICurrentWorkspaceProvider workspace) : ControllerBase
+public sealed class EmailSyncJobsController(EmailSyncService sync, EmailSyncDispatcher dispatcher, ICurrentWorkspaceProvider workspace) : ControllerBase
 {
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Read(Guid id, CancellationToken token)
@@ -42,6 +42,9 @@ public sealed class EmailSyncJobsController(EmailSyncService sync, ICurrentWorks
     [HttpPost("{id:guid}/process-result")]
     public async Task<IActionResult> Process(Guid id, CancellationToken token)
     { await sync.ProcessAsync(await workspace.GetCurrentWorkspaceIdAsync(token), id, token); return NoContent(); }
+    [HttpPost("{id:guid}/dispatch")]
+    public async Task<IActionResult> Dispatch(Guid id, CancellationToken token)
+    { await dispatcher.DispatchAsync(await workspace.GetCurrentWorkspaceIdAsync(token), id, token); return NoContent(); }
     [HttpPost("{id:guid}/cancel")]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken token)
     { await sync.CancelAsync(await workspace.GetCurrentWorkspaceIdAsync(token), id, token); return NoContent(); }

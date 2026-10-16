@@ -31,6 +31,7 @@ public sealed class IntegrationKey
 public sealed class IntegrationOptions
 {
     public bool Enabled { get; set; }
+    public EmailSyncTransportOptions EmailSync { get; set; } = new();
     public string Endpoint { get; set; } = "";
     public Guid ConnectionId { get; set; }
     public Guid WorkspaceId { get; set; }
@@ -39,7 +40,8 @@ public sealed class IntegrationOptions
     public int ClockWindowSeconds { get; set; } = 300;
     public IntegrationKey OutgoingKey { get; set; } = new();
     public List<IntegrationKey> IncomingKeys { get; set; } = [];
-    public bool IsValid(OperatorOptions human) => !Enabled || (human.IsConfigured && human.WorkspaceId == WorkspaceId
+    public bool IsValid(OperatorOptions human) => (!EmailSync.Enabled || Enabled && EmailSync.IsValid())
+        && (!Enabled || (human.IsConfigured && human.WorkspaceId == WorkspaceId
         && ConnectionId != Guid.Empty && TimeoutSeconds is >= 1 and <= 60 && MaxConcurrentSends is >= 1 and <= 8
         && ClockWindowSeconds is >= 30 and <= 300
         && Uri.TryCreate(Endpoint, UriKind.Absolute, out var uri) && uri.Scheme == "https"
@@ -48,7 +50,15 @@ public sealed class IntegrationOptions
         && IncomingKeys.Count is >= 1 and <= 16 && IncomingKeys.All(k => k.IsValid())
         && IncomingKeys.Select(k => k.Id).Distinct(StringComparer.Ordinal).Count() == IncomingKeys.Count
         && IncomingKeys.All(k => !CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(k.SecretBase64), Convert.FromBase64String(OutgoingKey.SecretBase64)))
-        && IncomingKeys.Any(k => k.Enabled && k.ConnectionId == ConnectionId && k.WorkspaceId == WorkspaceId));
+        && IncomingKeys.Any(k => k.Enabled && k.ConnectionId == ConnectionId && k.WorkspaceId == WorkspaceId)));
+}
+
+public sealed class EmailSyncTransportOptions
+{
+    public bool Enabled { get; set; }
+    public string Endpoint { get; set; } = "";
+    public bool IsValid() => Uri.TryCreate(Endpoint, UriKind.Absolute, out var uri) && uri.Scheme == "https"
+        && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
 }
 
 public static class IntegrationSignature

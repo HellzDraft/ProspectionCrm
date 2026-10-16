@@ -48,7 +48,9 @@ builder.Services.AddScoped<EmailAccountService>();
 builder.Services.AddScoped<InboundEmailImportService>();
 builder.Services.AddScoped<EmailSyncService>();
 builder.Services.AddScoped<EmailSyncDispatcher>();
-builder.Services.AddSingleton<IEmailSyncTransport, UnavailableEmailSyncTransport>();
+builder.Services.AddScoped<HttpEmailSyncTransport>();
+builder.Services.AddScoped<IEmailSyncTransport>(services => services.GetRequiredService<IOptionsMonitor<IntegrationOptions>>().CurrentValue.EmailSync.Enabled
+    ? services.GetRequiredService<HttpEmailSyncTransport>() : new UnavailableEmailSyncTransport());
 builder.Services.AddOptions<IntegrationOptions>().Bind(builder.Configuration.GetSection("Integrations"))
     .Validate<IOptions<OperatorOptions>>((options, human) => options.IsValid(human.Value), "Invalid integration security configuration.")
     .ValidateOnStart();

@@ -1,0 +1,87 @@
+{
+  "name": "Phase 9.5.2 - deterministic inbound email sync",
+  "active": false,
+  "nodes": [
+    {
+      "id": "462c325d-9049-4fab-bd54-566e106d03b9",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "9b16c9dd-4ea4-4db7-ae2c-f5bb56f97564",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-email-sync-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "e84aff7c-9aca-4e27-ad15-0c4c712f2aec",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmEmailSync",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "primaryAccountRef": "",
+        "secondaryAccountRef": ""
+      }
+    },
+    {
+      "id": "3cbf6d6d-5542-40f1-a4bb-081a7f2c7f78",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  }
+}
