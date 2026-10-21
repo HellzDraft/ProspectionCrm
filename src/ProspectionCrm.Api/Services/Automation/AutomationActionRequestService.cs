@@ -3,11 +3,12 @@ using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.AutomationActionRequests;
 using ProspectionCrm.Api.Entities;
 using ProspectionCrm.Api.Security;
+using ProspectionCrm.Api.Services.Email;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
 public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspaceProvider,
-    AutomationRuntimeStore runtime, AutomationActionRequestStore store, IHumanActor humanActor)
+    AutomationRuntimeStore runtime, AutomationActionRequestStore store, IHumanActor humanActor, EmailSendPlanService? emails = null)
 {
     public async Task<AutomationJobResult<AutomationActionRequestDto>> GetAsync(Guid id, CancellationToken token)
     {
@@ -63,6 +64,15 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
             return await GetAsync(id, token);
         }
         if (request.StatusCode != ActionRequestStatuses.Pending) return new(null, 409, "ActionRequestAlreadyDecided");
+        if (request.ActionTypeCode == EmailSendSnapshots.ActionType)
+        {
+            await (emails ?? throw new InvalidOperationException("Email preparation is unavailable.")).DecideLocked(request, approve, token);
+            request.StatusCode = desired;
+            request.DecidedAt = await EmailSyncLocks.Now(db, token); request.UpdatedAt = request.DecidedAt;
+            request.DecidedByUserId = identity.UserId;
+            request.DecisionNote = string.IsNullOrWhiteSpace(body.DecisionNote) ? null : body.DecisionNote;
+            await db.SaveChangesAsync(token); await tx.CommitAsync(token); return await GetAsync(id, token);
+        }
         var job = await db.AutomationJobs.FromSqlInterpolated($"""
             SELECT * FROM "AutomationJobs" WHERE "Id" = {request.AutomationJobId} AND "WorkspaceId" = {workspace.Value} FOR UPDATE
             """).AsNoTracking().SingleOrDefaultAsync(token);
@@ -105,13 +115,16 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
         var jobs = await db.AutomationJobs.AsNoTracking().Where(x => x.WorkspaceId == workspace && jobIds.Contains(x.Id))
             .Select(x => new { x.Id, x.StatusCode }).ToDictionaryAsync(x => x.Id, x => x.StatusCode, token);
         // Do not let an INNER JOIN hide a request whose referenced rule is unexpectedly absent.
-        return rows.Select(r => ToDto(r, rules.GetValueOrDefault(r.AutomationRuleId), jobs.GetValueOrDefault(r.AutomationJobId))).ToList();
+        return rows.Select(r => ToDto(r, r.AutomationRuleId is { } ruleId ? rules.GetValueOrDefault(ruleId) : null,
+            r.AutomationJobId is { } jobId ? jobs.GetValueOrDefault(jobId) : null)).ToList();
     }
     private static AutomationActionRequestDto ToDto(AutomationActionRequest r, AutomationRule? rule, string? jobStatus) => new(r.Id, r.AutomationJobId,
         r.AutomationRuleId, rule?.Name, r.DecisionRequirementCode, r.StatusCode, r.ActionTypeCode,
         r.ActionCategoryCode, AutomationActionSnapshot.Parse(r.ActionPlanJson), r.RequestedReasonCode, r.RequestedAt,
         r.UpdatedAt, r.DecidedAt, r.DecidedByUserId, r.DecisionNote, jobStatus,
-        AutomationActionSnapshot.IsStale(r, rule));
+        AutomationActionSnapshot.IsStale(r, rule),
+        r.ActionTypeCode == EmailSendSnapshots.ActionType && EmailSendSnapshots.ValidRequest(r) ? EmailSendSnapshots.Parse(r.ActionPlanJson) : null,
+        r.ContentFingerprint);
     private async Task<Guid?> WorkspaceAsync(CancellationToken token)
     {
         try { return await workspaceProvider.GetCurrentWorkspaceIdAsync(token); }

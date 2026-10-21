@@ -307,11 +307,15 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<Guid>("AutomationJobId")
+                    b.Property<Guid?>("AutomationJobId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AutomationRuleId")
+                    b.Property<Guid?>("AutomationRuleId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ContentFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
                         .HasColumnType("timestamp with time zone");
@@ -366,6 +370,10 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.HasIndex("WorkspaceId", "RequestedAt", "Id")
                         .IsDescending(false, true, true);
 
+                    b.HasIndex("WorkspaceId", "AutomationJobId", "AutomationRuleId", "Id")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ActionRequests_ExecutionBinding");
+
                     b.HasIndex("WorkspaceId", "StatusCode", "RequestedAt", "Id")
                         .IsDescending(false, false, true, true);
 
@@ -375,7 +383,11 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                             t.HasCheckConstraint("CK_ActionRequests_Decision", "(\"StatusCode\" = 'pending' AND \"DecidedAt\" IS NULL AND \"DecidedByUserId\" IS NULL AND \"DecisionNote\" IS NULL)\nOR (\"StatusCode\" IN ('approved','rejected') AND \"DecidedAt\" IS NOT NULL AND \"DecidedByUserId\" IS NOT NULL)\nOR (\"StatusCode\" = 'cancelled' AND \"DecidedAt\" IS NOT NULL)");
 
+                            t.HasCheckConstraint("CK_ActionRequests_Email", "(\"ActionTypeCode\" <> 'email.send' AND \"ContentFingerprint\" IS NULL)\nOR (\"ActionTypeCode\" = 'email.send' AND \"ActionCategoryCode\" = 'email'\n    AND \"ContentFingerprint\" IS NOT NULL AND \"ContentFingerprint\" ~ '^[0-9a-f]{64}$')");
+
                             t.HasCheckConstraint("CK_ActionRequests_Fingerprint", "\"RuleFingerprint\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_ActionRequests_Origin", "(\"AutomationJobId\" IS NOT NULL AND \"AutomationRuleId\" IS NOT NULL)\nOR (\"AutomationJobId\" IS NULL AND \"AutomationRuleId\" IS NULL AND \"ActionTypeCode\" = 'email.send')");
 
                             t.HasCheckConstraint("CK_ActionRequests_Plan", "jsonb_typeof(\"ActionPlanJson\") = 'object' AND octet_length(\"ActionPlanJson\"::text) <= 65536");
 
@@ -512,6 +524,10 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                     b.HasIndex("AutomationRuleId", "TriggeredAt");
 
+                    b.HasIndex("WorkspaceId", "AutomationActionRequestId");
+
+                    b.HasIndex("WorkspaceId", "AutomationJobId");
+
                     b.HasIndex("WorkspaceId", "FinishedAt")
                         .HasDatabaseName("IX_AutomationExecutions_Quotas")
                         .HasFilter("\"EffectApplied\" AND \"IsAutomaticAttempt\"");
@@ -524,8 +540,6 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.HasIndex("WorkspaceId", "TriggeredAt");
 
                     b.HasIndex("WorkspaceId", "StatusCode", "TriggeredAt");
-
-                    b.HasIndex("WorkspaceId", "AutomationJobId", "AutomationRuleId", "AutomationActionRequestId");
 
                     b.ToTable("AutomationExecutions", null, t =>
                         {
@@ -1517,6 +1531,122 @@ namespace ProspectionCrm.Api.Data.Migrations
                             t.HasCheckConstraint("CK_EmailMessages_DirectionCode", "\"DirectionCode\" IN ('inbound', 'outbound')");
 
                             t.HasCheckConstraint("CK_EmailMessages_ToAddressesJson", "jsonb_typeof(\"ToAddressesJson\") = 'array'");
+                        });
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AutomationActionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BodyText")
+                        .IsRequired()
+                        .HasMaxLength(32000)
+                        .HasColumnType("character varying(32000)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CcAddressesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmailAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FromAddressSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<Guid?>("OpportunityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("SubmittedRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ToAddressesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "CompanyId");
+
+                    b.HasIndex("WorkspaceId", "ContactId");
+
+                    b.HasIndex("WorkspaceId", "OpportunityId");
+
+                    b.HasIndex("WorkspaceId", "CreatedAt", "Id");
+
+                    b.HasIndex("WorkspaceId", "EmailAccountId", "ConnectionId");
+
+                    b.ToTable("EmailSendPlans", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_EmailSendPlans_Dates", "(\"UpdatedAt\" IS NULL OR \"UpdatedAt\" >= \"CreatedAt\") AND (\"SubmittedAt\" IS NULL OR \"SubmittedAt\" >= \"CreatedAt\")\nAND (\"ApprovedAt\" IS NULL OR \"ApprovedAt\" >= \"SubmittedAt\") AND (\"RejectedAt\" IS NULL OR \"RejectedAt\" >= \"SubmittedAt\")\nAND (\"CancelledAt\" IS NULL OR \"CancelledAt\" >= COALESCE(\"SubmittedAt\", \"CreatedAt\"))");
+
+                            t.HasCheckConstraint("CK_EmailSendPlans_Hash", "\"ContentHash\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_EmailSendPlans_Recipients", "jsonb_typeof(\"ToAddressesJson\") = 'array' AND jsonb_typeof(\"CcAddressesJson\") = 'array'\nAND jsonb_array_length(\"ToAddressesJson\") > 0\nAND jsonb_array_length(\"ToAddressesJson\") + jsonb_array_length(\"CcAddressesJson\") <= 100");
+
+                            t.HasCheckConstraint("CK_EmailSendPlans_Revision", "\"Revision\" >= 0 AND (\"SubmittedRevision\" IS NULL OR (\"SubmittedRevision\" >= 0 AND \"SubmittedRevision\" < \"Revision\"))");
+
+                            t.HasCheckConstraint("CK_EmailSendPlans_State", "(\"StatusCode\" = 'draft' AND \"AutomationActionRequestId\" IS NULL AND \"SubmittedAt\" IS NULL AND \"SubmittedRevision\" IS NULL\n    AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL AND \"CancelledAt\" IS NULL)\nOR (\"StatusCode\" IN ('pending-approval','approved','rejected') AND \"AutomationActionRequestId\" IS NOT NULL\n    AND \"SubmittedAt\" IS NOT NULL AND \"SubmittedRevision\" IS NOT NULL AND \"CancelledAt\" IS NULL\n    AND ((\"StatusCode\" = 'pending-approval' AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL)\n        OR (\"StatusCode\" = 'approved' AND \"ApprovedAt\" IS NOT NULL AND \"RejectedAt\" IS NULL)\n        OR (\"StatusCode\" = 'rejected' AND \"RejectedAt\" IS NOT NULL AND \"ApprovedAt\" IS NULL)))\nOR (\"StatusCode\" = 'cancelled' AND \"CancelledAt\" IS NOT NULL AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL\n    AND ((\"AutomationActionRequestId\" IS NULL AND \"SubmittedRevision\" IS NULL AND \"SubmittedAt\" IS NULL)\n        OR (\"AutomationActionRequestId\" IS NOT NULL AND \"SubmittedRevision\" IS NOT NULL AND \"SubmittedAt\" IS NOT NULL)))");
                         });
                 });
 
@@ -3184,15 +3314,13 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .WithMany()
                         .HasForeignKey("WorkspaceId", "AutomationJobId")
                         .HasPrincipalKey("WorkspaceId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ProspectionCrm.Api.Entities.AutomationRule", "AutomationRule")
                         .WithMany()
                         .HasForeignKey("WorkspaceId", "AutomationRuleId")
                         .HasPrincipalKey("WorkspaceId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AutomationJob");
 
@@ -3236,16 +3364,16 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", "AutomationActionRequest")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "AutomationActionRequestId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("ProspectionCrm.Api.Entities.AutomationJob", "AutomationJob")
                         .WithMany()
                         .HasForeignKey("WorkspaceId", "AutomationJobId")
                         .HasPrincipalKey("WorkspaceId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", "AutomationActionRequest")
-                        .WithMany()
-                        .HasForeignKey("WorkspaceId", "AutomationJobId", "AutomationRuleId", "AutomationActionRequestId")
-                        .HasPrincipalKey("WorkspaceId", "AutomationJobId", "AutomationRuleId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AutomationActionRequest");
@@ -3577,6 +3705,46 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Navigation("Opportunity");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendPlan", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", null)
+                        .WithOne()
+                        .HasForeignKey("ProspectionCrm.Api.Entities.EmailSendPlan", "WorkspaceId", "AutomationActionRequestId")
+                        .HasPrincipalKey("ProspectionCrm.Api.Entities.AutomationActionRequest", "WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CompanyId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Contact", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "ContactId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Opportunity", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "OpportunityId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.EmailAccount", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "EmailAccountId", "ConnectionId")
+                        .HasPrincipalKey("WorkspaceId", "Id", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSyncJob", b =>

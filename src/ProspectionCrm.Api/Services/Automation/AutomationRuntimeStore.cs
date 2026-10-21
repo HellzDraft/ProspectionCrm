@@ -82,7 +82,7 @@ public sealed class AutomationRuntimeStore(ProspectionCrmDbContext db, IAutomati
         var now = Now;
         var execution = new AutomationExecution { WorkspaceId = job.WorkspaceId,
             AutomationRuleId = input.ActionRequest?.StatusCode == ActionRequestStatuses.Approved
-                ? input.ActionRequest.AutomationRuleId : job.AutomationRuleId!.Value,
+                ? input.ActionRequest.AutomationRuleId!.Value : job.AutomationRuleId!.Value,
             AutomationJobId = job.Id, AttemptNumber = job.AttemptCount, StatusCode = "running",
             TriggeredAt = now, StartedAt = now,
             ActionTypeCode = AutomationActionCatalog.Find(input.ActionRequest?.ActionTypeCode ?? input.Rule?.ActionTypeCode)?.TypeCode,

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Email;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
@@ -45,8 +46,10 @@ public static class AutomationActionSnapshot
         return parsed is null ? null : new(opportunity, parsed.Title, parsed.Description, parsed.DueInDays);
     }
 
-    public static bool IsStale(AutomationActionRequest request, AutomationRule? rule) =>
-        DefinitionChanged(request, rule) || Parse(request.ActionPlanJson) is null;
+    public static bool IsStale(AutomationActionRequest request, AutomationRule? rule) => request.ActionTypeCode == EmailSendSnapshots.ActionType
+        ? !EmailSendSnapshots.ValidRequest(request) || (request.AutomationRuleId is null
+            ? request.RuleFingerprint != request.ContentFingerprint : DefinitionChanged(request, rule))
+        : DefinitionChanged(request, rule) || Parse(request.ActionPlanJson) is null;
 
     private static bool DefinitionChanged(AutomationActionRequest request, AutomationRule? rule) => rule is null
         || rule.WorkspaceId != request.WorkspaceId || rule.Id != request.AutomationRuleId

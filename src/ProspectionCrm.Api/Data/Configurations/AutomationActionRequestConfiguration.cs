@@ -10,7 +10,10 @@ public sealed class AutomationActionRequestConfiguration : IEntityTypeConfigurat
     public void Configure(EntityTypeBuilder<AutomationActionRequest> b)
     {
         b.HasKey(x => x.Id);
-        b.HasAlternateKey(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.Id });
+        b.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
+        // The migration retains the execution's four-column FK against this nullable unique index.
+        b.HasIndex(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.Id }).IsUnique()
+            .HasDatabaseName("UX_ActionRequests_ExecutionBinding");
         b.HasIndex(x => x.AutomationJobId).IsUnique().HasDatabaseName("UX_AutomationActionRequests_Job");
         b.Property(x => x.DecisionRequirementCode).HasMaxLength(20).IsRequired();
         b.Property(x => x.StatusCode).HasMaxLength(20).IsRequired().HasDefaultValue(ActionRequestStatuses.Pending).ValueGeneratedNever();
@@ -18,6 +21,7 @@ public sealed class AutomationActionRequestConfiguration : IEntityTypeConfigurat
         b.Property(x => x.ActionCategoryCode).HasMaxLength(50).IsRequired();
         b.Property(x => x.ActionPlanJson).HasColumnType("jsonb").IsRequired();
         b.Property(x => x.RuleFingerprint).HasMaxLength(64).IsRequired();
+        b.Property(x => x.ContentFingerprint).HasMaxLength(64);
         b.Property(x => x.RequestedReasonCode).HasMaxLength(100).IsRequired();
         b.Property(x => x.DecisionNote).HasMaxLength(ActionRequestCodes.NoteLength);
         b.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
@@ -30,6 +34,15 @@ public sealed class AutomationActionRequestConfiguration : IEntityTypeConfigurat
         b.HasIndex(x => new { x.WorkspaceId, x.StatusCode, x.RequestedAt, x.Id }).IsDescending(false, false, true, true);
         b.ToTable("AutomationActionRequests", t =>
         {
+            t.HasCheckConstraint("CK_ActionRequests_Origin", """
+                ("AutomationJobId" IS NOT NULL AND "AutomationRuleId" IS NOT NULL)
+                OR ("AutomationJobId" IS NULL AND "AutomationRuleId" IS NULL AND "ActionTypeCode" = 'email.send')
+                """);
+            t.HasCheckConstraint("CK_ActionRequests_Email", """
+                ("ActionTypeCode" <> 'email.send' AND "ContentFingerprint" IS NULL)
+                OR ("ActionTypeCode" = 'email.send' AND "ActionCategoryCode" = 'email'
+                    AND "ContentFingerprint" IS NOT NULL AND "ContentFingerprint" ~ '^[0-9a-f]{64}$')
+                """);
             t.HasCheckConstraint("CK_ActionRequests_Requirement", "\"DecisionRequirementCode\" IN ('manual','approval-required')");
             t.HasCheckConstraint("CK_ActionRequests_Status", "\"StatusCode\" IN ('pending','approved','rejected','cancelled')");
             t.HasCheckConstraint("CK_ActionRequests_Plan", $"jsonb_typeof(\"ActionPlanJson\") = 'object' AND octet_length(\"ActionPlanJson\"::text) <= {ActionRequestCodes.PlanBytes}");

@@ -1,11 +1,12 @@
 using System.Text.Json;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Dtos.EmailMessages;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
 public sealed record AutomationEvaluationResult(bool IsValid, bool IsMatched, bool? ConditionMatched,
     string ReasonCode, string TriggerTypeCode, string ActionTypeCode, string? ActionCategoryCode,
-    AutomationSafetyDecision? SafetyDecision = null, CreateCrmTaskPlan? ActionPlan = null);
+    AutomationSafetyDecision? SafetyDecision = null, CreateCrmTaskPlan? ActionPlan = null, EmailSendContent? EmailPlan = null);
 
 public interface IAutomationRuleEvaluator
 {
@@ -30,14 +31,16 @@ public sealed class AutomationRuleEvaluator(IAutomationSafetyPolicy safetyPolicy
         if (job.ActionCategoryCode != action.CategoryCode) return Reject(AutomationEvaluationReasons.CategoryMismatch);
         if (!AutomationEventContext.TryParse(job.ContextJson, out var context)) return Reject(AutomationEvaluationReasons.InvalidContext);
         var config = action.ParseConfiguration(rule.ActionConfigurationJson);
-        if (config is null) return Reject(AutomationEvaluationReasons.InvalidConfiguration);
+        var email = action.ParseEmailConfiguration?.Invoke(rule.ActionConfigurationJson);
+        if (config is null && email is null) return Reject(AutomationEvaluationReasons.InvalidConfiguration);
         if (!AutomationConditions.TryParse(rule.ConditionJson, out var condition)) return Reject(AutomationEvaluationReasons.InvalidCondition);
         if (rule.ArchivedAt is not null) return Reject(AutomationEvaluationReasons.RuleArchived, true);
         if (!rule.Enabled) return Reject(AutomationEvaluationReasons.RuleDisabled, true);
         if (rule.PipelineId is not null && rule.PipelineId != context.PipelineId) return Reject(AutomationEvaluationReasons.PipelineMismatch, true);
         if (!condition.Matches(context.Payload)) return Reject(AutomationEvaluationReasons.ConditionNotMatched, true, false);
-        if (!context.Payload.TryGetProperty("opportunityId", out var target) || target.ValueKind != JsonValueKind.String
-            || !target.TryGetGuid(out var opportunityId) || opportunityId == Guid.Empty)
+        Guid opportunityId = default;
+        if (email is null && (!context.Payload.TryGetProperty("opportunityId", out var target) || target.ValueKind != JsonValueKind.String
+            || !target.TryGetGuid(out opportunityId) || opportunityId == Guid.Empty))
             return Reject(AutomationEvaluationReasons.InvalidOpportunity, condition: true);
 
         var safety = safetyPolicy.Evaluate(settings, action.CategoryCode);
@@ -50,6 +53,6 @@ public sealed class AutomationRuleEvaluator(IAutomationSafetyPolicy safetyPolicy
             _ => AutomationEvaluationReasons.EligibleAutomatic
         };
         return new(true, true, true, reason, job.TriggerTypeCode, action.TypeCode, action.CategoryCode, safety,
-            new(opportunityId, config.Title, config.Description, config.DueInDays));
+            config is null ? null : new(opportunityId, config.Title, config.Description, config.DueInDays), email);
     }
 }

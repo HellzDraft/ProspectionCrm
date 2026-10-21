@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Email;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
 // These transitions participate in the caller's transaction and workspace automation lock.
 // Keeping them separate leaves the Phase 8.2 public queue capabilities unchanged.
-public sealed class AutomationActionRequestStore(ProspectionCrmDbContext db, AutomationRuntimeStore runtime)
+public sealed class AutomationActionRequestStore(ProspectionCrmDbContext db, AutomationRuntimeStore runtime, EmailSendPlanService? emails = null)
 {
     public async Task AwaitApprovalAsync(AutomationJob job, string owner, AutomationRuntimeInput input, CancellationToken token)
     {
@@ -16,19 +17,24 @@ public sealed class AutomationActionRequestStore(ProspectionCrmDbContext db, Aut
         {
             var evaluation = input.Evaluation!;
             if (!NeedsDecision(input)) throw new InvalidOperationException("A matched human decision is required.");
-            var fingerprint = AutomationActionSnapshot.Fingerprint(input.Rule!)
-                ?? throw new InvalidOperationException("A valid rule definition is required.");
-            var plan = AutomationActionSnapshot.Serialize(evaluation.ActionPlan!);
-            var id = Guid.NewGuid();
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "AutomationActionRequests" ("Id","WorkspaceId","AutomationJobId","AutomationRuleId",
-                    "DecisionRequirementCode","StatusCode","ActionTypeCode","ActionCategoryCode","ActionPlanJson",
-                    "RuleFingerprint","RequestedReasonCode","RequestedAt")
-                VALUES ({id},{job.WorkspaceId},{job.Id},{job.AutomationRuleId},
-                    {evaluation.SafetyDecision!.DecisionCode},{ActionRequestStatuses.Pending},{evaluation.ActionTypeCode},
-                    {evaluation.ActionCategoryCode},CAST({plan} AS jsonb),{fingerprint},{evaluation.ReasonCode},{runtime.Now})
-                ON CONFLICT ("AutomationJobId") DO NOTHING
-                """, token);
+            if (evaluation.EmailPlan is not null)
+                await (emails ?? throw new InvalidOperationException("Email preparation is unavailable.")).PrepareAutomationLocked(job, input, token);
+            else
+            {
+                var fingerprint = AutomationActionSnapshot.Fingerprint(input.Rule!)
+                    ?? throw new InvalidOperationException("A valid rule definition is required.");
+                var plan = AutomationActionSnapshot.Serialize(evaluation.ActionPlan!);
+                var id = Guid.NewGuid();
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "AutomationActionRequests" ("Id","WorkspaceId","AutomationJobId","AutomationRuleId",
+                        "DecisionRequirementCode","StatusCode","ActionTypeCode","ActionCategoryCode","ActionPlanJson",
+                        "RuleFingerprint","RequestedReasonCode","RequestedAt")
+                    VALUES ({id},{job.WorkspaceId},{job.Id},{job.AutomationRuleId},
+                        {evaluation.SafetyDecision!.DecisionCode},{ActionRequestStatuses.Pending},{evaluation.ActionTypeCode},
+                        {evaluation.ActionCategoryCode},CAST({plan} AS jsonb),{fingerprint},{evaluation.ReasonCode},{runtime.Now})
+                    ON CONFLICT ("AutomationJobId") DO NOTHING
+                    """, token);
+            }
         }
         // Recheck the lease in the statement that relinquishes it, after all preceding waits.
         var changed = await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -73,6 +79,7 @@ public sealed class AutomationActionRequestStore(ProspectionCrmDbContext db, Aut
     }
 
     public static bool NeedsDecision(AutomationRuntimeInput input) => input.ActionRequest is null
-        && input.Evaluation is { IsValid: true, IsMatched: true, ActionPlan: not null } evaluation
+        && input.Evaluation is { IsValid: true, IsMatched: true } evaluation
+        && (evaluation.ActionPlan is not null || evaluation.EmailPlan is not null)
         && ActionRequestCodes.RequiresDecision(evaluation.SafetyDecision?.DecisionCode);
 }

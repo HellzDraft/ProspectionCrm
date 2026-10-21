@@ -63,13 +63,14 @@ public abstract class AutomationSupervisionFixture(AutomationJobDatabase databas
     }
     protected static IAutomationActionExecutor TechnicalFailure() => new DelegateExecutor((_, _, _, _) =>
         throw new InvalidOperationException("secret-marker"));
-    protected async Task<string[]> BusinessSnapshot(Guid workspace)
+    protected async Task<string[]> BusinessSnapshot(Guid workspace, bool beforeEmailPlans = false)
     {
         await using var db = Db();
         return await db.Database.SqlQuery<string>($"""
             SELECT 'job:' || to_jsonb(j)::text AS "Value" FROM "AutomationJobs" j WHERE "WorkspaceId" = {workspace}
             UNION ALL SELECT 'execution:' || to_jsonb(e)::text FROM "AutomationExecutions" e WHERE "WorkspaceId" = {workspace}
-            UNION ALL SELECT 'request:' || to_jsonb(r)::text FROM "AutomationActionRequests" r WHERE "WorkspaceId" = {workspace}
+            UNION ALL SELECT 'request:' || (to_jsonb(r) - CASE WHEN {beforeEmailPlans} THEN 'ContentFingerprint' ELSE '' END)::text
+                FROM "AutomationActionRequests" r WHERE "WorkspaceId" = {workspace}
             UNION ALL SELECT 'settings:' || to_jsonb(s)::text FROM "AutomationRuntimeSettings" s WHERE "WorkspaceId" = {workspace}
             UNION ALL SELECT 'task:' || to_jsonb(t)::text FROM "CrmTasks" t JOIN "Opportunities" o ON o."Id" = t."OpportunityId"
                 WHERE o."WorkspaceId" = {workspace}

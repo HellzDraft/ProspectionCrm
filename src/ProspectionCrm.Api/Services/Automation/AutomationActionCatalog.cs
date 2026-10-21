@@ -1,4 +1,6 @@
 using System.Text.Json;
+using ProspectionCrm.Api.Dtos.EmailMessages;
+using ProspectionCrm.Api.Services.Email;
 
 namespace ProspectionCrm.Api.Services.Automation;
 
@@ -9,16 +11,20 @@ public sealed record CreateCrmTaskPlan(Guid OpportunityId, string Title, string?
     public string ActionCategoryCode => AutomationCategories.General;
 }
 
-// V1 deliberately has a single typed configuration and plan, without a generic execution framework.
+// Each action retains a closed typed configuration; email has no effect executor.
 public sealed record AutomationActionDefinition(string TypeCode, string CategoryCode, Type PlanType,
-    Func<string?, CreateCrmTaskConfiguration?> ParseConfiguration);
+    Func<string?, CreateCrmTaskConfiguration?> ParseConfiguration,
+    Func<string?, EmailSendContent?>? ParseEmailConfiguration = null);
 
 public static class AutomationActionCatalog
 {
     public const string CreateCrmTask = "create-crm-task";
     private static readonly AutomationActionDefinition TaskAction = new(CreateCrmTask, AutomationCategories.General,
         typeof(CreateCrmTaskPlan), ParseTaskConfiguration);
-    public static AutomationActionDefinition? Find(string? code) => code == CreateCrmTask ? TaskAction : null;
+    private static readonly AutomationActionDefinition EmailAction = new(EmailSendSnapshots.ActionType, AutomationCategories.Email,
+        typeof(EmailSendContent), _ => null, EmailSendSnapshots.ParseConfiguration);
+    public static AutomationActionDefinition? Find(string? code) => code == CreateCrmTask ? TaskAction
+        : code == EmailSendSnapshots.ActionType ? EmailAction : null;
 
     private static CreateCrmTaskConfiguration? ParseTaskConfiguration(string? json)
     {
@@ -52,7 +58,8 @@ public static class AutomationRuleValidation
         var definition = AutomationActionCatalog.Find(action);
         if (definition is null) return AutomationEvaluationReasons.UnsupportedAction;
         if (!AutomationConditions.TryParse(conditionJson, out _)) return AutomationEvaluationReasons.InvalidCondition;
-        if (definition.ParseConfiguration(configurationJson) is null) return AutomationEvaluationReasons.InvalidConfiguration;
+        if (definition.ParseConfiguration(configurationJson) is null && definition.ParseEmailConfiguration?.Invoke(configurationJson) is null)
+            return AutomationEvaluationReasons.InvalidConfiguration;
         return null;
     }
 }

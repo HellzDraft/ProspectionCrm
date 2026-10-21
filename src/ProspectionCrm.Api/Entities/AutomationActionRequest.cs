@@ -6,14 +6,15 @@ public sealed class AutomationActionRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid WorkspaceId { get; set; }
-    public Guid AutomationJobId { get; set; }
-    public Guid AutomationRuleId { get; set; }
+    public Guid? AutomationJobId { get; set; }
+    public Guid? AutomationRuleId { get; set; }
     public required string DecisionRequirementCode { get; set; }
     public string StatusCode { get; set; } = ActionRequestStatuses.Pending;
     public required string ActionTypeCode { get; set; }
     public required string ActionCategoryCode { get; set; }
     public required string ActionPlanJson { get; set; }
     public required string RuleFingerprint { get; set; }
+    public string? ContentFingerprint { get; set; }
     public required string RequestedReasonCode { get; set; }
     public DateTimeOffset RequestedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
@@ -21,7 +22,7 @@ public sealed class AutomationActionRequest
     public Guid? DecidedByUserId { get; set; }
     public string? DecisionNote { get; set; }
     public Workspace Workspace { get; set; } = null!;
-    public AutomationJob AutomationJob { get; set; } = null!;
-    public AutomationRule AutomationRule { get; set; } = null!;
+    public AutomationJob? AutomationJob { get; set; }
+    public AutomationRule? AutomationRule { get; set; }
     public UserAccount? DecidedByUser { get; set; }
 }

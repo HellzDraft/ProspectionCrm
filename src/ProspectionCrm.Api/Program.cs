@@ -45,6 +45,7 @@ builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IntegrationStore>();
 builder.Services.AddScoped<EmailAccountService>();
+builder.Services.AddScoped<EmailSendPlanService>();
 builder.Services.AddScoped<InboundEmailImportService>();
 builder.Services.AddScoped<EmailSyncService>();
 builder.Services.AddScoped<EmailSyncDispatcher>();

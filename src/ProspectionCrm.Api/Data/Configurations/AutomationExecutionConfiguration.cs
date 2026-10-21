@@ -14,8 +14,8 @@ public class AutomationExecutionConfiguration : IEntityTypeConfiguration<Automat
         builder.Property(x => x.IsAutomaticAttempt).HasDefaultValue(false);
         builder.Property(x => x.IsHumanApprovedAttempt).HasDefaultValue(false);
         builder.HasOne(x => x.AutomationActionRequest).WithMany()
-            .HasForeignKey(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.AutomationActionRequestId })
-            .HasPrincipalKey(x => new { x.WorkspaceId, x.AutomationJobId, x.AutomationRuleId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => new { x.WorkspaceId, x.AutomationActionRequestId })
+            .HasPrincipalKey(x => new { x.WorkspaceId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.IsDeferred).HasDefaultValue(false);
         builder.Property(x => x.EffectApplied).HasDefaultValue(false);
         builder.HasOne(x => x.AutomationJob).WithMany()
