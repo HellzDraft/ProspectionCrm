@@ -1,0 +1,87 @@
+{
+  "name": "Phase 9.6.2 - deterministic calendar sync",
+  "active": false,
+  "nodes": [
+    {
+      "id": "f3964020-870a-418f-b7b8-d0b2ac6f3de5",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ba40a207-ea15-489f-97b4-d1f42298bbe5",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-calendar-sync-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "cc1b36a3-4643-4b69-bb2b-243ffb92fa47",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmCalendarSync",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "primaryCalendarRef": "",
+        "secondaryCalendarRef": ""
+      }
+    },
+    {
+      "id": "d1b51a13-35be-4bfd-b92a-ffd04bbf2298",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  }
+}

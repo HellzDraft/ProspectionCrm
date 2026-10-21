@@ -50,7 +50,9 @@ builder.Services.AddScoped<CalendarCatalogService>();
 builder.Services.AddScoped<CalendarSyncService>();
 builder.Services.AddScoped<CalendarSyncDispatcher>();
 builder.Services.AddScoped<InboundCalendarImportService>();
-builder.Services.AddScoped<ICalendarSyncTransport, UnavailableCalendarSyncTransport>();
+builder.Services.AddScoped<HttpCalendarSyncTransport>();
+builder.Services.AddScoped<ICalendarSyncTransport>(services => services.GetRequiredService<IOptionsMonitor<IntegrationOptions>>().CurrentValue.CalendarSync.Enabled
+    ? services.GetRequiredService<HttpCalendarSyncTransport>() : new UnavailableCalendarSyncTransport());
 builder.Services.AddScoped<EmailAccountService>();
 builder.Services.AddScoped<EmailSendPlanService>();
 builder.Services.AddScoped<EmailSendDeliveryService>();

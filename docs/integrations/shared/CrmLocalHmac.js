@@ -40,14 +40,14 @@ async function executeSignedCommand(profile) {
     if (!items[0].binary?.data) return reject(400, 'raw-body-required');
     const raw = await this.helpers.getBinaryDataBuffer(0, 'data');
     const emailSend = profile.type === 'email.send';
-    if (!raw.length || raw.length > (emailSend ? 65536 : 4096)) return reject(413, 'invalid-body-size');
+    if (!raw.length || raw.length > (emailSend ? 65536 : profile.type === 'calendar.sync' ? 16384 : 4096)) return reject(413, 'invalid-body-size');
     if (!crypto.timingSafeEqual(sign(incoming, 'crm-to-n8n', c.incomingId, timestamp, profile.target, raw), Buffer.from(signature, 'hex'))) return reject(401, 'invalid-signature');
     let command;
     try { command = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)); }
     catch { return reject(400, 'invalid-command'); }
     // JSON duplicate properties are rejected independently of the parsed object.
-    const propertyNames = [...raw.toString('utf8').matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)].map(m => JSON.parse('"' + m[1] + '"'));
-    if (emailSend ? (!uniqueProperties(raw.toString('utf8')) || !profile.validCommand(command)) :
+    const propertyNames = emailSend || profile.type === 'calendar.sync' ? [] : [...raw.toString('utf8').matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)].map(m => JSON.parse('"' + m[1] + '"'));
+    if (emailSend || profile.type === 'calendar.sync' ? (!uniqueProperties(raw.toString('utf8')) || !profile.validCommand(command)) :
       (propertyNames.length !== 6 + profile.payloadFields.length || new Set(propertyNames).size !== propertyNames.length ||
       !shape(command, ['version','messageId','operationId','correlationId','type','payload']) || command.version !== 1 || command.type !== profile.type ||
       ![command.messageId,command.operationId,command.correlationId].every(isId) || !shape(command.payload, [...profile.payloadFields]) || !profile.validPayload(command.payload))) return reject(400, 'invalid-command');
@@ -62,7 +62,7 @@ async function sendCallback(c, result) {
   const body = Buffer.from(JSON.stringify(result), 'utf8'), callbackTimestamp = String(Math.floor(Date.now()/1000));
   const key = Buffer.from(c.outgoingSecret, 'base64');
   if (key.length !== 32 || !/^[A-Za-z0-9_-]{1,64}$/.test(c.outgoingId)) throw Error('invalid-key-configuration');
-  if (result.type === 'email.send' && body.length > 4096) throw Error('callback-too-large');
+  if ((result.type === 'email.send' && body.length > 4096) || (result.type === 'calendar.sync' && body.length > 524288)) throw Error('callback-too-large');
   const callback = await post(body, { 'X-CRM-Key-Id': c.outgoingId, 'X-CRM-Timestamp': callbackTimestamp,
     'X-CRM-Signature': sign(key, 'n8n-to-crm', c.outgoingId, callbackTimestamp, callbackTarget, body).toString('hex') }, c.caPem);
   let ack; try { ack = JSON.parse(callback.body); } catch { throw new Error('invalid-callback-response'); }
