@@ -1,0 +1,88 @@
+{
+  "name": "Phase 9.5.4.2 - simulated outbound email delivery",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c832932e-eaa6-41b2-9440-f61e65717b09",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "32fa0258-a1a3-4878-b190-0e4d646c2c1d",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-email-send-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "14e0a9fa-3664-42ed-b1f4-123520e525c0",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmEmailSend",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "accountRef": "",
+        "workspaceRef": "",
+        "connectionRef": ""
+      }
+    },
+    {
+      "id": "b8b49475-ecc7-4659-94df-2576ed5b8ce9",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  }
+}

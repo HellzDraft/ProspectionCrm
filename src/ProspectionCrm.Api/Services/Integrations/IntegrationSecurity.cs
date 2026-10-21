@@ -32,6 +32,7 @@ public sealed class IntegrationOptions
 {
     public bool Enabled { get; set; }
     public EmailSyncTransportOptions EmailSync { get; set; } = new();
+    public EmailSyncTransportOptions EmailSend { get; set; } = new();
     public string Endpoint { get; set; } = "";
     public Guid ConnectionId { get; set; }
     public Guid WorkspaceId { get; set; }
@@ -41,6 +42,7 @@ public sealed class IntegrationOptions
     public IntegrationKey OutgoingKey { get; set; } = new();
     public List<IntegrationKey> IncomingKeys { get; set; } = [];
     public bool IsValid(OperatorOptions human) => (!EmailSync.Enabled || Enabled && EmailSync.IsValid())
+        && (!EmailSend.Enabled || Enabled && EmailSend.IsValid())
         && (!Enabled || (human.IsConfigured && human.WorkspaceId == WorkspaceId
         && ConnectionId != Guid.Empty && TimeoutSeconds is >= 1 and <= 60 && MaxConcurrentSends is >= 1 and <= 8
         && ClockWindowSeconds is >= 30 and <= 300
