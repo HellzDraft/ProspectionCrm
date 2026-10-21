@@ -3,6 +3,11 @@ namespace ProspectionCrm.Api.Dtos.CalendarEvents;
 public class CalendarEventDto
 {
     public Guid Id { get; set; }
+    public Guid? CalendarId { get; set; }
+    public long? ExternalRevision { get; set; }
+    public string? StatusCode { get; set; }
+    public string? SeriesId { get; set; }
+    public string? OccurrenceId { get; set; }
     public Guid? OpportunityId { get; set; }
     public Guid? ContactId { get; set; }
     public string ProviderCode { get; set; } = string.Empty;

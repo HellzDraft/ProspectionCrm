@@ -67,9 +67,16 @@ public sealed class AutomationPhase8EndToEndTests(AutomationJobDatabase database
             Assert.Empty(await Tasks(jobId)); Assert.Empty(await Executions(jobId));
             if (mode == "manual") { Assert.Equal("pending",(await Job(jobId)).StatusCode); await Run(setup); }
         }
+        var observedJob = await Job(jobId);
+        Assert.Equal(mode == "assist" ? "cancelled" : "completed", observedJob.StatusCode);
+        Assert.NotNull(observedJob.CompletedAt);
         Clock.Now = DateTimeOffset.UtcNow;
+        // Completion uses PostgreSQL's clock. Observe after the durable completion even when
+        // the host clock trails the container slightly; keep the exact supervision assertions.
+        if (observedJob.CompletedAt.Value > Clock.Now) Clock.Now = observedJob.CompletedAt.Value;
         var final = (await client.GetFromJsonAsync<AutomationSupervisionDto>("/api/automation-supervision"))!;
-        Assert.Equal(mode == "assist" ? 0 : 1, final.Queue.CompletedLast24HoursCount);
+        Assert.True(final.Queue.CompletedLast24HoursCount == (mode == "assist" ? 0 : 1),
+            $"Mode={mode}; status={observedJob.StatusCode}; completedAt={observedJob.CompletedAt:O}; cutoff={Clock.Now:O}; count={final.Queue.CompletedLast24HoursCount}");
         Assert.Equal(0,final.Queue.AwaitingApprovalCount); Assert.Equal(0,final.ActionRequests.PendingCount);
         Assert.Equal(mode == "assist" ? "cancelled" : "completed",(await Job(jobId)).StatusCode);
         if (mode == "assist")

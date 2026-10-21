@@ -40,6 +40,11 @@ public class CalendarEventService(ProspectionCrmDbContext dbContext, ICurrentWor
     private static CalendarEventDto ToDto(CalendarEvent calendarEvent) => new()
     {
         Id = calendarEvent.Id,
+        CalendarId = calendarEvent.CalendarId,
+        ExternalRevision = calendarEvent.ExternalRevision,
+        StatusCode = calendarEvent.StatusCode,
+        SeriesId = calendarEvent.SeriesId,
+        OccurrenceId = calendarEvent.OccurrenceId,
         OpportunityId = calendarEvent.OpportunityId,
         ContactId = calendarEvent.ContactId,
         ProviderCode = calendarEvent.ProviderCode,

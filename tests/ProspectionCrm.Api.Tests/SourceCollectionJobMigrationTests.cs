@@ -20,21 +20,22 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         Assert.Empty(await db.SourceCollectionJobs.ToListAsync());
         Assert.Equal(before, await Snapshot());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.Equal(BeforeJobs, migrations[^16]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^15]);
-        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^14]);
-        Assert.EndsWith("_Phase73CollectionRetries", migrations[^13]);
-        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^12]);
-        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^11]);
-        Assert.EndsWith("_Phase82AutomationJobs", migrations[^10]);
-        Assert.EndsWith("_Phase84AutomationExecutionRuntime", migrations[^9]);
-        Assert.EndsWith("_Phase85AutomationActionRequests", migrations[^8]);
-        Assert.Equal(AutomationRuntimeMigrationTests.Current, migrations[^7]);
-        Assert.Equal(IntegrationPersistenceMigrationTests.Current, migrations[^6]);
-        Assert.Equal(IntegrationSecurityMigrationTests.Current, migrations[^5]);
-        Assert.Equal(RemoteCollectionMigrationTests.Current, migrations[^4]);
-        Assert.Equal(EmailSyncMigrationTests.Current, migrations[^3]);
-        Assert.Equal(EmailSendPlanMigrationTests.Current, migrations[^2]);
-        Assert.Equal(EmailSendDeliveryMigrationTests.Current, migrations[^1]);
+        Assert.Equal(BeforeJobs, migrations[^17]); Assert.EndsWith("_Phase71PersistentCollectionJobs", migrations[^16]);
+        Assert.EndsWith("_Phase72CollectionWorkerLeases", migrations[^15]);
+        Assert.EndsWith("_Phase73CollectionRetries", migrations[^14]);
+        Assert.EndsWith("_Phase74CollectionScheduling", migrations[^13]);
+        Assert.EndsWith("_Phase81AutomationRuntimeSettings", migrations[^12]);
+        Assert.EndsWith("_Phase82AutomationJobs", migrations[^11]);
+        Assert.EndsWith("_Phase84AutomationExecutionRuntime", migrations[^10]);
+        Assert.EndsWith("_Phase85AutomationActionRequests", migrations[^9]);
+        Assert.Equal(AutomationRuntimeMigrationTests.Current, migrations[^8]);
+        Assert.Equal(IntegrationPersistenceMigrationTests.Current, migrations[^7]);
+        Assert.Equal(IntegrationSecurityMigrationTests.Current, migrations[^6]);
+        Assert.Equal(RemoteCollectionMigrationTests.Current, migrations[^5]);
+        Assert.Equal(EmailSyncMigrationTests.Current, migrations[^4]);
+        Assert.Equal(EmailSendPlanMigrationTests.Current, migrations[^3]);
+        Assert.Equal(EmailSendDeliveryMigrationTests.Current, migrations[^2]);
+        Assert.Equal(CalendarSyncMigrationTests.Current, migrations[^1]);
         Assert.Equal(migrations, await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         await AssertSchema();
@@ -61,7 +62,7 @@ public sealed class SourceCollectionJobMigrationTests : PersistentSourceIdentity
         var tables = new List<string>();
         await using (var command = new NpgsqlCommand("""
             SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-            AND tablename NOT IN ('__EFMigrationsHistory','EmailSendDeliveries', 'EmailSendPlans', 'EmailAccounts', 'EmailSyncStates', 'EmailSyncJobs', 'RemoteCollectionIntents', 'IntegrationOperations', 'IntegrationAttempts', 'IntegrationReceipts', 'AutomationCircuitResets', 'AutomationActionRequests', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
+            AND tablename NOT IN ('CalendarAccounts','Calendars','CalendarSyncStates','CalendarSyncJobs','__EFMigrationsHistory','EmailSendDeliveries', 'EmailSendPlans', 'EmailAccounts', 'EmailSyncStates', 'EmailSyncJobs', 'RemoteCollectionIntents', 'IntegrationOperations', 'IntegrationAttempts', 'IntegrationReceipts', 'AutomationCircuitResets', 'AutomationActionRequests', 'AutomationJobs', 'AutomationRuntimeSettings', 'SourceCollectionJobs', 'SourceCollectionJobAttempts', 'SourceCollectionSchedules') ORDER BY tablename
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync())
             while (await reader.ReadAsync()) tables.Add(reader.GetString(0));

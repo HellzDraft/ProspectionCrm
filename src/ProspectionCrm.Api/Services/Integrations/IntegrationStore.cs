@@ -1,3 +1,4 @@
+using ProspectionCrm.Api.Services.Calendar;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +16,7 @@ public enum IntegrationTransportOutcome { Acknowledged, Failed, Unknown }
 public enum IntegrationReception { Recorded, AlreadyRecorded }
 
 // All updates use untracked reads and SQL in their own transaction; no unrelated tracked changes are saved.
-public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock, RemoteCollectionState? collections = null, EmailSyncService? emails = null, EmailSendDeliveryService? deliveries = null)
+public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock, RemoteCollectionState? collections = null, EmailSyncService? emails = null, EmailSendDeliveryService? deliveries = null, CalendarSyncService? calendars = null)
 {
     public async Task<IntegrationOperation> CreateProbeAsync(Guid workspaceId, Guid? connectionId = null, CancellationToken token = default)
     {
@@ -87,6 +88,8 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
     {
         if (EmailSendContracts.IsEmailSend(json))
             return await (deliveries ?? throw Conflict("email-send-receiver-unavailable")).ReceiveAsync(access, json, token);
+        if (CalendarSyncContracts.IsCalendarSync(Encoding.UTF8.GetBytes(json)))
+            return await (calendars ?? throw new IntegrationAccessException()).ReceiveAsync(access, json, token);
         if (EmailSyncContracts.IsEmailSync(Encoding.UTF8.GetBytes(json)))
             return await (emails ?? throw Conflict("email-receiver-unavailable")).ReceiveAsync(access, json, token);
         if (CollectionIntegrationContracts.IsCollection(Encoding.UTF8.GetBytes(json)))

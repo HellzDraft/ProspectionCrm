@@ -42,7 +42,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
             """);
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
-        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendPlans.ToListAsync());
+        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendPlans.ToListAsync());
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         await db.GetService<IMigrator>().MigrateAsync(EmailSyncMigrationTests.Current); Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
@@ -52,7 +52,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
     public async Task FreshSchemaAndPopulatedDowngradeGuardPreserveEmailAuthorizationHistory()
     {
         var s = await PrepareAsync(); await using var db = Db();
-        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
         var account = new EmailAccount { WorkspaceId = s.Workspace, ConnectionId = Guid.NewGuid(), ProviderCode = "synthetic",
             ExternalAccountId = "guard", EmailAddress = "guard@example.invalid", CreatedAt = DateTimeOffset.UtcNow };
         db.Add(account); await db.SaveChangesAsync();

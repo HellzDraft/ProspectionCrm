@@ -40,9 +40,7 @@ internal static class EmailSyncLocks
             SELECT * FROM "EmailSyncStates" WHERE "EmailAccountId" = {account} FOR UPDATE
             """).AsNoTracking().SingleAsync(token);
     internal static Task<IntegrationReceipt?> ReceiptAsync(ProspectionCrmDbContext db, Guid operation, CancellationToken token) =>
-        db.IntegrationReceipts.FromSqlInterpolated($"""
-            SELECT * FROM "IntegrationReceipts" WHERE "OperationId" = {operation} FOR UPDATE
-            """).AsNoTracking().SingleOrDefaultAsync(token);
+        Services.Integrations.IntegrationSyncLocks.ReceiptAsync(db, operation, token);
     internal static Task<DateTimeOffset> Now(ProspectionCrmDbContext db, CancellationToken token) =>
-        db.Database.SqlQuery<DateTimeOffset>($"SELECT statement_timestamp() AS \"Value\"").SingleAsync(token);
+        Services.Integrations.IntegrationSyncLocks.Now(db, token);
 }

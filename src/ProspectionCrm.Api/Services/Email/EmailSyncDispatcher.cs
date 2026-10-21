@@ -22,14 +22,7 @@ public sealed class EmailSyncDispatcher(EmailSyncService sync, IEmailSyncTranspo
     public async Task DispatchAsync(Guid workspace, Guid job, CancellationToken token = default)
     {
         if (!transport.IsAvailable) throw new EmailSyncException("EmailSyncTransportDisabled");
-        var (command, attempt) = await sync.BeginAsync(workspace, job, token);
-        // Begin has committed; a request disconnect cannot skip recording the transport outcome.
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        IntegrationTransportOutcome outcome;
-        try { outcome = await transport.DispatchAsync(command, deadline.Token); }
-        catch (Exception e) when (e is IOException or HttpRequestException or OperationCanceledException)
-        { outcome = IntegrationTransportOutcome.Unknown; }
-        using var finalize = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await sync.CompleteDispatchAsync(workspace, job, attempt, outcome, finalize.Token);
+        await IntegrationSyncDispatch.RunAsync(t => sync.BeginAsync(workspace, job, t), transport.DispatchAsync,
+            (attempt, outcome, t) => sync.CompleteDispatchAsync(workspace, job, attempt, outcome, t), token);
     }
 }

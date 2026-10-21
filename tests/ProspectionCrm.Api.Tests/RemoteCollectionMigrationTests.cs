@@ -44,7 +44,7 @@ public sealed class RemoteCollectionMigrationTests : PersistentSourceIdentityFix
         await store.ReceiveAsync(new(setup.Workspace, op.ConnectionId!.Value), result);
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db)); Assert.Empty(await db.RemoteCollectionIntents.ToListAsync());
-        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.False(db.Database.HasPendingModelChanges()); Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         await db.GetService<IMigrator>().MigrateAsync(IntegrationSecurityMigrationTests.Current); Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
         Assert.Empty(await db.RemoteCollectionIntents.ToListAsync()); Assert.False(db.Database.HasPendingModelChanges());
@@ -124,10 +124,10 @@ public sealed class RemoteCollectionMigrationTests : PersistentSourceIdentityFix
         await Assert.ThrowsAsync<PostgresException>(() => db.GetService<IMigrator>().MigrateAsync(IntegrationSecurityMigrationTests.Current));
         // Phases953/951 are empty here; their Down commits before Phase941 refuses to erase its history.
         Assert.Single(await db.RemoteCollectionIntents.ToListAsync()); Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
-        Assert.Equal(new[] { EmailSyncMigrationTests.Current, EmailSendPlanMigrationTests.Current, EmailSendDeliveryMigrationTests.Current }, await db.Database.GetPendingMigrationsAsync());
+        Assert.Equal(new[] { EmailSyncMigrationTests.Current, EmailSendPlanMigrationTests.Current, EmailSendDeliveryMigrationTests.Current, CalendarSyncMigrationTests.Current }, await db.Database.GetPendingMigrationsAsync());
         await db.Database.MigrateAsync();
         Assert.Single(await db.RemoteCollectionIntents.ToListAsync());
-        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.False(db.Database.HasPendingModelChanges());
     }
 

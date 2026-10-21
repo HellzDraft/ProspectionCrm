@@ -1,3 +1,4 @@
+using ProspectionCrm.Api.Services.Calendar;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProspectionCrm.Api.Security;
@@ -44,6 +45,12 @@ builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IntegrationStore>();
+builder.Services.AddScoped<CalendarAccountService>();
+builder.Services.AddScoped<CalendarCatalogService>();
+builder.Services.AddScoped<CalendarSyncService>();
+builder.Services.AddScoped<CalendarSyncDispatcher>();
+builder.Services.AddScoped<InboundCalendarImportService>();
+builder.Services.AddScoped<ICalendarSyncTransport, UnavailableCalendarSyncTransport>();
 builder.Services.AddScoped<EmailAccountService>();
 builder.Services.AddScoped<EmailSendPlanService>();
 builder.Services.AddScoped<EmailSendDeliveryService>();
@@ -169,6 +176,8 @@ app.Use(async (context, next) =>
     try { await next(context); }
     catch (UnauthorizedAccessException) { context.Response.StatusCode = 403; }
     catch (IntegrationAccessException) { context.Response.StatusCode = 403; }
+    catch (CalendarSyncException error)
+    { context.Response.StatusCode = error.Status; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
     catch (EmailSyncException error)
     { context.Response.StatusCode = error.Status; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
     catch (ProspectionCrm.Api.Dtos.Integrations.IntegrationContractException)

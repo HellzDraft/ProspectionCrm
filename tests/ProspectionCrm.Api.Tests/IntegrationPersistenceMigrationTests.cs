@@ -30,7 +30,7 @@ public sealed class IntegrationPersistenceMigrationTests : IAsyncLifetime
             migration.UpOperations.OfType<CreateTableOperation>().Select(x => x.Name).Order().ToArray());
         await db.Database.MigrateAsync();
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         await db.GetService<IMigrator>().MigrateAsync(AutomationRuntimeMigrationTests.Current);
         var company = new Company { Name = "Preserved before 9.3.1", Workspace = new Workspace { Name = "Migration",
             TimeZoneId = "UTC", OwnerUser = new() { Email = "integration-migration@example.invalid" } } };
