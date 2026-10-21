@@ -41,6 +41,8 @@ public sealed class AutomationActionRequestErrorsAttribute : ActionFilterAttribu
     }
     public void OnException(ExceptionContext context)
     {
+        if (context.Exception is ProspectionCrm.Api.Services.Calendar.CalendarSyncException calendar)
+        { context.Result = Failure(calendar.Status, calendar.Message); context.ExceptionHandled = true; return; }
         if (context.Exception is ProspectionCrm.Api.Services.Email.EmailSyncException email)
         { context.Result = Failure(email.Status, email.Message); context.ExceptionHandled = true; return; }
         if (context.Exception is UnauthorizedAccessException) return;

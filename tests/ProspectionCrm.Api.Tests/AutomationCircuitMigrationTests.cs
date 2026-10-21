@@ -14,7 +14,7 @@ public sealed class AutomationCircuitMigrationTests(AutomationJobDatabase databa
     public async Task FreshChainAndPopulatedUpgradeDownUpPreserveEveryPriorBusinessRow()
     {
         await using var db = Db();
-        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(CalendarEventPlanMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         var setup = await Approved(); await Run(setup);
         await Settings(setup.Workspace,s => s.MaxConsecutiveFailures = 1);

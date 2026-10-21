@@ -1,4 +1,6 @@
 using System.Text.Json;
+using ProspectionCrm.Api.Services.Calendar;
+using ProspectionCrm.Api.Dtos.CalendarEvents;
 using ProspectionCrm.Api.Dtos.EmailMessages;
 using ProspectionCrm.Api.Services.Email;
 
@@ -24,7 +26,8 @@ public static class AutomationActionCatalog
     private static readonly AutomationActionDefinition EmailAction = new(EmailSendSnapshots.ActionType, AutomationCategories.Email,
         typeof(EmailSendContent), _ => null, EmailSendSnapshots.ParseConfiguration);
     public static AutomationActionDefinition? Find(string? code) => code == CreateCrmTask ? TaskAction
-        : code == EmailSendSnapshots.ActionType ? EmailAction : null;
+        : code == EmailSendSnapshots.ActionType ? EmailAction
+        : CalendarEventSnapshots.IsAction(code) ? new(code!, AutomationCategories.Calendar, typeof(CalendarEventSnapshot), _ => null) : null;
 
     private static CreateCrmTaskConfiguration? ParseTaskConfiguration(string? json)
     {
@@ -56,7 +59,7 @@ public static class AutomationRuleValidation
     {
         if (!AutomationJobTriggers.IsValid(trigger)) return AutomationEvaluationReasons.UnsupportedTrigger;
         var definition = AutomationActionCatalog.Find(action);
-        if (definition is null) return AutomationEvaluationReasons.UnsupportedAction;
+        if (definition is null || CalendarEventSnapshots.IsAction(action)) return AutomationEvaluationReasons.UnsupportedAction;
         if (!AutomationConditions.TryParse(conditionJson, out _)) return AutomationEvaluationReasons.InvalidCondition;
         if (definition.ParseConfiguration(configurationJson) is null && definition.ParseEmailConfiguration?.Invoke(configurationJson) is null)
             return AutomationEvaluationReasons.InvalidConfiguration;

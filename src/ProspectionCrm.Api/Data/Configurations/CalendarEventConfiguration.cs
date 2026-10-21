@@ -8,6 +8,7 @@ public class CalendarEventConfiguration : IEntityTypeConfiguration<CalendarEvent
 {
     public void Configure(EntityTypeBuilder<CalendarEvent> builder)
     {
+        builder.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.ProviderCode).IsRequired().HasMaxLength(50);
         builder.Property(x => x.ExternalEventId).HasMaxLength(500);

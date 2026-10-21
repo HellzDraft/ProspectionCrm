@@ -31,7 +31,7 @@ public sealed class AutomationEventDispatcher(ProspectionCrmDbContext db, IAutom
             && x.Enabled && x.ArchivedAt == null && x.TriggerTypeCode == input.TriggerTypeCode
             && (x.PipelineId == null || x.PipelineId == input.PipelineId)).OrderBy(x => x.Id).ToListAsync(token);
         // Resolve all categories before writing. Unsupported historical actions cannot be assigned an invented category.
-        if (rules.Any(x => AutomationActionCatalog.Find(x.ActionTypeCode) is null))
+        if (rules.Any(x => AutomationActionCatalog.Find(x.ActionTypeCode) is null || Calendar.CalendarEventSnapshots.IsAction(x.ActionTypeCode)))
             return new(null, 409, AutomationEvaluationReasons.UnsupportedAction);
         var jobs = new List<DispatchedAutomationJob>();
         if (rules.Count > 0)

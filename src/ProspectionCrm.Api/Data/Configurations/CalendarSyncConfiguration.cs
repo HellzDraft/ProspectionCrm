@@ -91,6 +91,7 @@ public sealed class CalendarConfiguration : IEntityTypeConfiguration<Calendar>
     public void Configure(EntityTypeBuilder<Calendar> b)
     {
         b.HasKey(x => x.Id);
+        b.HasAlternateKey(x => new { x.WorkspaceId, x.Id, x.CalendarAccountId, x.ConnectionId });
         b.HasAlternateKey(x => new { x.WorkspaceId, x.Id });
         b.HasAlternateKey(x => new { x.WorkspaceId, x.Id, x.ConnectionId });
         b.HasAlternateKey(x => new { x.WorkspaceId, x.Id, x.ProviderCode });

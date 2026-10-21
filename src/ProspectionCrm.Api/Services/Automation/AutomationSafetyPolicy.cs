@@ -22,7 +22,12 @@ public sealed class AutomationSafetyPolicy : IAutomationSafetyPolicy
         if (!AutomationModes.IsValid(requested)) return Block(AutomationReasons.InvalidMode);
         var effective = requested;
         var reason = AutomationReasons.GlobalMode;
-        if (categoryCode == AutomationCategories.Application)
+        if (categoryCode == AutomationCategories.Calendar)
+        {
+            effective = AutomationModes.Manual;
+            reason = AutomationReasons.CalendarCap;
+        }
+        else if (categoryCode == AutomationCategories.Application)
         {
             effective = AutomationModes.Manual;
             reason = AutomationReasons.ApplicationCap;

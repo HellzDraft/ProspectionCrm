@@ -35,12 +35,14 @@ public sealed class AutomationActionRequestConfiguration : IEntityTypeConfigurat
         b.ToTable("AutomationActionRequests", t =>
         {
             t.HasCheckConstraint("CK_ActionRequests_Origin", """
-                ("AutomationJobId" IS NOT NULL AND "AutomationRuleId" IS NOT NULL)
-                OR ("AutomationJobId" IS NULL AND "AutomationRuleId" IS NULL AND "ActionTypeCode" = 'email.send')
+                ("AutomationJobId" IS NOT NULL AND "AutomationRuleId" IS NOT NULL AND "ActionTypeCode" NOT IN ('calendar.event.create','calendar.event.update'))
+                OR ("AutomationJobId" IS NULL AND "AutomationRuleId" IS NULL AND "ActionTypeCode" IN ('email.send','calendar.event.create','calendar.event.update'))
                 """);
             t.HasCheckConstraint("CK_ActionRequests_Email", """
-                ("ActionTypeCode" <> 'email.send' AND "ContentFingerprint" IS NULL)
+                ("ActionTypeCode" NOT IN ('email.send','calendar.event.create','calendar.event.update') AND "ContentFingerprint" IS NULL)
                 OR ("ActionTypeCode" = 'email.send' AND "ActionCategoryCode" = 'email'
+                    AND "ContentFingerprint" IS NOT NULL AND "ContentFingerprint" ~ '^[0-9a-f]{64}$')
+                OR ("ActionTypeCode" IN ('calendar.event.create','calendar.event.update') AND "ActionCategoryCode" = 'calendar'
                     AND "ContentFingerprint" IS NOT NULL AND "ContentFingerprint" ~ '^[0-9a-f]{64}$')
                 """);
             t.HasCheckConstraint("CK_ActionRequests_Requirement", "\"DecisionRequirementCode\" IN ('manual','approval-required')");

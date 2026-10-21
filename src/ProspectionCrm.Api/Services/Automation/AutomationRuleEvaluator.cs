@@ -27,7 +27,7 @@ public sealed class AutomationRuleEvaluator(IAutomationSafetyPolicy safetyPolicy
         if (job.AutomationRuleId != rule.Id) return Reject(AutomationEvaluationReasons.RuleMismatch);
         if (!AutomationJobTriggers.IsValid(rule.TriggerTypeCode)) return Reject(AutomationEvaluationReasons.UnsupportedTrigger);
         if (job.TriggerTypeCode != rule.TriggerTypeCode) return Reject(AutomationEvaluationReasons.TriggerMismatch);
-        if (action is null) return Reject(AutomationEvaluationReasons.UnsupportedAction);
+        if (action is null || Calendar.CalendarEventSnapshots.IsAction(rule.ActionTypeCode)) return Reject(AutomationEvaluationReasons.UnsupportedAction);
         if (job.ActionCategoryCode != action.CategoryCode) return Reject(AutomationEvaluationReasons.CategoryMismatch);
         if (!AutomationEventContext.TryParse(job.ContextJson, out var context)) return Reject(AutomationEvaluationReasons.InvalidContext);
         var config = action.ParseConfiguration(rule.ActionConfigurationJson);

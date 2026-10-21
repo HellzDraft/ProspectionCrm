@@ -29,7 +29,7 @@ public sealed class EmailSendDeliveryMigrationTests : PersistentSourceIdentityFi
         p.AutomationActionRequestId=request.Id; db.AddRange(request,p); await db.SaveChangesAsync();
         var before=await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.False(db.Database.HasPendingModelChanges());
-        Assert.Equal(CalendarSyncMigrationTests.Current,(await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendDeliveries.ToListAsync());
+        Assert.Equal(CalendarEventPlanMigrationTests.Current,(await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendDeliveries.ToListAsync());
         Assert.Equal(before,await Snapshot(db));
         await db.GetService<IMigrator>().MigrateAsync(EmailSendPlanMigrationTests.Current); await db.Database.MigrateAsync();
         Assert.Equal(before,await Snapshot(db));

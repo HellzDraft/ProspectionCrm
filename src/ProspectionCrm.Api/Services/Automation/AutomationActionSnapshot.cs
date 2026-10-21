@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using ProspectionCrm.Api.Services.Calendar;
 using System.Text.Json;
 using ProspectionCrm.Api.Entities;
 using ProspectionCrm.Api.Services.Email;
@@ -49,6 +50,7 @@ public static class AutomationActionSnapshot
     public static bool IsStale(AutomationActionRequest request, AutomationRule? rule) => request.ActionTypeCode == EmailSendSnapshots.ActionType
         ? !EmailSendSnapshots.ValidRequest(request) || (request.AutomationRuleId is null
             ? request.RuleFingerprint != request.ContentFingerprint : DefinitionChanged(request, rule))
+        : CalendarEventSnapshots.IsAction(request.ActionTypeCode) ? !CalendarEventSnapshots.ValidRequest(request)
         : DefinitionChanged(request, rule) || Parse(request.ActionPlanJson) is null;
 
     private static bool DefinitionChanged(AutomationActionRequest request, AutomationRule? rule) => rule is null

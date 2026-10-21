@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProspectionCrm.Api.Services.Calendar;
 using ProspectionCrm.Api.Data;
 using ProspectionCrm.Api.Dtos.AutomationActionRequests;
 using ProspectionCrm.Api.Entities;
@@ -8,7 +9,7 @@ using ProspectionCrm.Api.Services.Email;
 namespace ProspectionCrm.Api.Services.Automation;
 
 public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspaceProvider,
-    AutomationRuntimeStore runtime, AutomationActionRequestStore store, IHumanActor humanActor, EmailSendPlanService? emails = null)
+    AutomationRuntimeStore runtime, AutomationActionRequestStore store, IHumanActor humanActor, EmailSendPlanService? emails = null, CalendarEventPlanService? calendars = null)
 {
     public async Task<AutomationJobResult<AutomationActionRequestDto>> GetAsync(Guid id, CancellationToken token)
     {
@@ -64,9 +65,11 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
             return await GetAsync(id, token);
         }
         if (request.StatusCode != ActionRequestStatuses.Pending) return new(null, 409, "ActionRequestAlreadyDecided");
-        if (request.ActionTypeCode == EmailSendSnapshots.ActionType)
+        if (request.ActionTypeCode == EmailSendSnapshots.ActionType || CalendarEventSnapshots.IsAction(request.ActionTypeCode))
         {
-            await (emails ?? throw new InvalidOperationException("Email preparation is unavailable.")).DecideLocked(request, approve, token);
+            if (CalendarEventSnapshots.IsAction(request.ActionTypeCode))
+                await (calendars ?? throw new InvalidOperationException("Calendar preparation unavailable.")).DecideLocked(request, approve, token);
+            else await (emails ?? throw new InvalidOperationException("Email preparation is unavailable.")).DecideLocked(request, approve, token);
             request.StatusCode = desired;
             request.DecidedAt = await EmailSyncLocks.Now(db, token); request.UpdatedAt = request.DecidedAt;
             request.DecidedByUserId = identity.UserId;
@@ -124,7 +127,7 @@ public sealed class AutomationActionRequestService(ProspectionCrmDbContext db, I
         r.UpdatedAt, r.DecidedAt, r.DecidedByUserId, r.DecisionNote, jobStatus,
         AutomationActionSnapshot.IsStale(r, rule),
         r.ActionTypeCode == EmailSendSnapshots.ActionType && EmailSendSnapshots.ValidRequest(r) ? EmailSendSnapshots.Parse(r.ActionPlanJson) : null,
-        r.ContentFingerprint);
+        r.ContentFingerprint, CalendarEventSnapshots.ValidRequest(r) ? CalendarEventSnapshots.Parse(r.ActionPlanJson) : null);
     private async Task<Guid?> WorkspaceAsync(CancellationToken token)
     {
         try { return await workspaceProvider.GetCurrentWorkspaceIdAsync(token); }

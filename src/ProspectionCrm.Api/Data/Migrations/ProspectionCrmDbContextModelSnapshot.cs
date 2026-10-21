@@ -381,13 +381,13 @@ namespace ProspectionCrm.Api.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_ActionRequests_Dates", "\"DecidedAt\" IS NULL OR \"DecidedAt\" >= \"RequestedAt\"");
 
-                            t.HasCheckConstraint("CK_ActionRequests_Decision", "(\"StatusCode\" = 'pending' AND \"DecidedAt\" IS NULL AND \"DecidedByUserId\" IS NULL AND \"DecisionNote\" IS NULL)\nOR (\"StatusCode\" IN ('approved','rejected') AND \"DecidedAt\" IS NOT NULL AND \"DecidedByUserId\" IS NOT NULL)\nOR (\"StatusCode\" = 'cancelled' AND \"DecidedAt\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_ActionRequests_Decision", "(\"StatusCode\" = 'pending' AND \"DecidedAt\" IS NULL AND \"DecidedByUserId\" IS NULL AND \"DecisionNote\" IS NULL)\r\nOR (\"StatusCode\" IN ('approved','rejected') AND \"DecidedAt\" IS NOT NULL AND \"DecidedByUserId\" IS NOT NULL)\r\nOR (\"StatusCode\" = 'cancelled' AND \"DecidedAt\" IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_ActionRequests_Email", "(\"ActionTypeCode\" <> 'email.send' AND \"ContentFingerprint\" IS NULL)\nOR (\"ActionTypeCode\" = 'email.send' AND \"ActionCategoryCode\" = 'email'\n    AND \"ContentFingerprint\" IS NOT NULL AND \"ContentFingerprint\" ~ '^[0-9a-f]{64}$')");
+                            t.HasCheckConstraint("CK_ActionRequests_Email", "(\"ActionTypeCode\" NOT IN ('email.send','calendar.event.create','calendar.event.update') AND \"ContentFingerprint\" IS NULL)\r\nOR (\"ActionTypeCode\" = 'email.send' AND \"ActionCategoryCode\" = 'email'\r\n    AND \"ContentFingerprint\" IS NOT NULL AND \"ContentFingerprint\" ~ '^[0-9a-f]{64}$')\r\nOR (\"ActionTypeCode\" IN ('calendar.event.create','calendar.event.update') AND \"ActionCategoryCode\" = 'calendar'\r\n    AND \"ContentFingerprint\" IS NOT NULL AND \"ContentFingerprint\" ~ '^[0-9a-f]{64}$')");
 
                             t.HasCheckConstraint("CK_ActionRequests_Fingerprint", "\"RuleFingerprint\" ~ '^[0-9a-f]{64}$'");
 
-                            t.HasCheckConstraint("CK_ActionRequests_Origin", "(\"AutomationJobId\" IS NOT NULL AND \"AutomationRuleId\" IS NOT NULL)\nOR (\"AutomationJobId\" IS NULL AND \"AutomationRuleId\" IS NULL AND \"ActionTypeCode\" = 'email.send')");
+                            t.HasCheckConstraint("CK_ActionRequests_Origin", "(\"AutomationJobId\" IS NOT NULL AND \"AutomationRuleId\" IS NOT NULL AND \"ActionTypeCode\" NOT IN ('calendar.event.create','calendar.event.update'))\r\nOR (\"AutomationJobId\" IS NULL AND \"AutomationRuleId\" IS NULL AND \"ActionTypeCode\" IN ('email.send','calendar.event.create','calendar.event.update'))");
 
                             t.HasCheckConstraint("CK_ActionRequests_Plan", "jsonb_typeof(\"ActionPlanJson\") = 'object' AND octet_length(\"ActionPlanJson\"::text) <= 65536");
 
@@ -908,8 +908,6 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                     b.HasAlternateKey("WorkspaceId", "Id");
 
-                    b.HasAlternateKey("WorkspaceId", "Id", "ConnectionId");
-
                     b.HasIndex("WorkspaceId", "ProviderCode", "ExternalAccountId")
                         .IsUnique();
 
@@ -1029,6 +1027,129 @@ namespace ProspectionCrm.Api.Data.Migrations
                             t.HasCheckConstraint("CK_CalendarEvents_EndsAt", "\"EndsAt\" >= \"StartsAt\"");
 
                             t.HasCheckConstraint("CK_CalendarEvents_Imported", "\"CalendarId\" IS NULL OR (\"ExternalEventId\" IS NOT NULL AND length(btrim(\"ExternalEventId\")) > 0\r\nAND \"ExternalRevision\" IS NOT NULL AND \"ExternalRevision\" >= 0\r\nAND \"ExternalContentSha256\" IS NOT NULL AND \"ExternalContentSha256\" ~ '^[a-f0-9]{64}$'\r\nAND \"StatusCode\" IS NOT NULL AND \"StatusCode\" IN ('confirmed','cancelled')\r\nAND \"EndsAt\" > \"StartsAt\" AND ((\"SeriesId\" IS NULL AND \"OccurrenceId\" IS NULL)\r\nOR (\"SeriesId\" IS NOT NULL AND \"OccurrenceId\" IS NOT NULL)))");
+                        });
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AutomationActionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperationCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid?>("OpportunityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("SubmittedRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("TargetCalendarEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TargetExternalEventId")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long?>("TargetExternalRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TargetSnapshotJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "CompanyId");
+
+                    b.HasIndex("WorkspaceId", "ContactId");
+
+                    b.HasIndex("WorkspaceId", "OpportunityId");
+
+                    b.HasIndex("WorkspaceId", "TargetCalendarEventId");
+
+                    b.HasIndex("WorkspaceId", "CalendarAccountId", "ConnectionId");
+
+                    b.HasIndex("WorkspaceId", "CreatedAt", "Id");
+
+                    b.HasIndex("WorkspaceId", "CalendarId", "CalendarAccountId", "ConnectionId");
+
+                    b.ToTable("CalendarEventPlans", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CalendarEventPlans_Content", "jsonb_typeof(\"ContentJson\") = 'object' AND octet_length(\"ContentJson\"::text) <= 60000\r\nAND ((\"OperationCode\" = 'create' AND \"TargetCalendarEventId\" IS NULL AND \"TargetExternalEventId\" IS NULL\r\n    AND \"TargetExternalRevision\" IS NULL AND \"TargetSnapshotJson\" IS NULL)\r\nOR (\"OperationCode\" = 'update' AND \"TargetCalendarEventId\" IS NOT NULL AND \"TargetExternalEventId\" IS NOT NULL\r\n    AND \"TargetExternalRevision\" IS NOT NULL AND \"TargetExternalRevision\" >= 0\r\n    AND \"TargetSnapshotJson\" IS NOT NULL AND jsonb_typeof(\"TargetSnapshotJson\") = 'object'))");
+
+                            t.HasCheckConstraint("CK_CalendarEventPlans_Dates", "(\"UpdatedAt\" IS NULL OR \"UpdatedAt\" >= \"CreatedAt\") AND (\"SubmittedAt\" IS NULL OR \"SubmittedAt\" >= \"CreatedAt\")\r\nAND (\"ApprovedAt\" IS NULL OR \"ApprovedAt\" >= \"SubmittedAt\") AND (\"RejectedAt\" IS NULL OR \"RejectedAt\" >= \"SubmittedAt\")\r\nAND (\"CancelledAt\" IS NULL OR \"CancelledAt\" >= COALESCE(\"SubmittedAt\", \"CreatedAt\"))");
+
+                            t.HasCheckConstraint("CK_CalendarEventPlans_Hash", "\"ContentHash\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_CalendarEventPlans_Revision", "\"Revision\" >= 0 AND (\"SubmittedRevision\" IS NULL OR (\"SubmittedRevision\" >= 0 AND \"SubmittedRevision\" < \"Revision\"))");
+
+                            t.HasCheckConstraint("CK_CalendarEventPlans_State", "(\"StatusCode\" = 'draft' AND \"AutomationActionRequestId\" IS NULL AND \"SubmittedAt\" IS NULL AND \"SubmittedRevision\" IS NULL\r\n    AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL AND \"CancelledAt\" IS NULL)\r\nOR (\"StatusCode\" IN ('pending-approval','approved','rejected') AND \"AutomationActionRequestId\" IS NOT NULL\r\n    AND \"SubmittedAt\" IS NOT NULL AND \"SubmittedRevision\" IS NOT NULL AND \"CancelledAt\" IS NULL\r\n    AND ((\"StatusCode\" = 'pending-approval' AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL)\r\n        OR (\"StatusCode\" = 'approved' AND \"ApprovedAt\" IS NOT NULL AND \"RejectedAt\" IS NULL)\r\n        OR (\"StatusCode\" = 'rejected' AND \"RejectedAt\" IS NOT NULL AND \"ApprovedAt\" IS NULL)))\r\nOR (\"StatusCode\" = 'cancelled' AND \"CancelledAt\" IS NOT NULL AND \"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL\r\n    AND ((\"AutomationActionRequestId\" IS NULL AND \"SubmittedRevision\" IS NULL AND \"SubmittedAt\" IS NULL)\r\n        OR (\"AutomationActionRequestId\" IS NOT NULL AND \"SubmittedRevision\" IS NOT NULL AND \"SubmittedAt\" IS NOT NULL)))");
                         });
                 });
 
@@ -3897,6 +4018,59 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Navigation("Opportunity");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventPlan", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", null)
+                        .WithOne()
+                        .HasForeignKey("ProspectionCrm.Api.Entities.CalendarEventPlan", "WorkspaceId", "AutomationActionRequestId")
+                        .HasPrincipalKey("ProspectionCrm.Api.Entities.AutomationActionRequest", "WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CompanyId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Contact", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "ContactId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Opportunity", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "OpportunityId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.CalendarEvent", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "TargetCalendarEventId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.CalendarAccount", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CalendarAccountId", "ConnectionId")
+                        .HasPrincipalKey("WorkspaceId", "Id", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Calendar", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CalendarId", "CalendarAccountId", "ConnectionId")
+                        .HasPrincipalKey("WorkspaceId", "Id", "CalendarAccountId", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarSyncJob", b =>

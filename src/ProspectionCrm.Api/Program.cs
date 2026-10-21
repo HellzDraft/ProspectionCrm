@@ -55,6 +55,7 @@ builder.Services.AddScoped<ICalendarSyncTransport>(services => services.GetRequi
     ? services.GetRequiredService<HttpCalendarSyncTransport>() : new UnavailableCalendarSyncTransport());
 builder.Services.AddScoped<EmailAccountService>();
 builder.Services.AddScoped<EmailSendPlanService>();
+builder.Services.AddScoped<CalendarEventPlanService>();
 builder.Services.AddScoped<EmailSendDeliveryService>();
 builder.Services.AddScoped<EmailSendDispatcher>();
 builder.Services.AddScoped<HttpEmailSendTransport>();

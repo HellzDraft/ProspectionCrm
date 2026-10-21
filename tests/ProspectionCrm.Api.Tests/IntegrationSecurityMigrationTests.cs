@@ -41,7 +41,7 @@ public sealed class IntegrationSecurityMigrationTests : IAsyncLifetime
         await Assert.ThrowsAsync<IntegrationAccessException>(() => new IntegrationStore(db, TimeProvider.System)
             .ReceiveAsync(new(workspace.Id, Guid.NewGuid()), json));
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal(CalendarSyncMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(CalendarEventPlanMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         await db.GetService<IMigrator>().MigrateAsync(IntegrationPersistenceMigrationTests.Current);
         Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync();

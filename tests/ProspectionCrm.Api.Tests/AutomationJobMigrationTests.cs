@@ -53,7 +53,7 @@ public sealed class AutomationJobMigrationTests : IAsyncLifetime
 
     private static async Task AssertCurrent(ProspectionCrmDbContext db)
     {
-        Assert.Equal(CalendarSyncMigrationTests.Current, db.Database.GetMigrations().Last());
+        Assert.Equal(CalendarEventPlanMigrationTests.Current, db.Database.GetMigrations().Last());
         Assert.Equal(db.Database.GetMigrations(), await db.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
     }

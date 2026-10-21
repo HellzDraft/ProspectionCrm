@@ -29,7 +29,7 @@ public sealed class CalendarSyncMigrationTests : PersistentSourceIdentityFixture
             ActionCategoryCode="email",ActionPlanJson="{}",ContentFingerprint=new string('a',64),RuleFingerprint=new string('a',64),RequestedReasonCode="historical",RequestedAt=now });
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var before=await Snapshot(db); await db.Database.MigrateAsync(); Assert.Equal(before,await Snapshot(db));
-        Assert.Equal(Current,(await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Equal(CalendarEventPlanMigrationTests.Current,(await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
         Assert.Null((await db.CalendarEvents.SingleAsync()).CalendarId);
         await db.GetService<IMigrator>().MigrateAsync(EmailSendDeliveryMigrationTests.Current); Assert.Equal(before,await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before,await Snapshot(db)); Assert.False(db.Database.HasPendingModelChanges());

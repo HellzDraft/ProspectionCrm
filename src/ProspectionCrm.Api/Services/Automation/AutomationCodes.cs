@@ -7,8 +7,8 @@ public static class AutomationModes
 }
 public static class AutomationCategories
 {
-    public const string General = "general", Email = "email", Application = "application";
-    public static bool IsValid(string? code) => code is General or Email or Application;
+    public const string General = "general", Email = "email", Application = "application", Calendar = "calendar";
+    public static bool IsValid(string? code) => code is General or Email or Application or Calendar;
 }
 public static class AutomationDecisions
 {
@@ -17,5 +17,5 @@ public static class AutomationDecisions
 public static class AutomationReasons
 {
     public const string Disabled = "automation-disabled", UnknownCategory = "unknown-category", InvalidMode = "invalid-mode",
-        GlobalMode = "global-mode", EmailCap = "email-assist-cap", ApplicationCap = "application-manual-cap";
+        CalendarCap = "calendar-manual-cap", GlobalMode = "global-mode", EmailCap = "email-assist-cap", ApplicationCap = "application-manual-cap";
 }

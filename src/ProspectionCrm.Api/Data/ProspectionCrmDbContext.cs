@@ -44,6 +44,7 @@ public class ProspectionCrmDbContext(DbContextOptions<ProspectionCrmDbContext> o
     public DbSet<EmailAccount> EmailAccounts => Set<EmailAccount>();
     public DbSet<EmailSyncState> EmailSyncStates => Set<EmailSyncState>();
     public DbSet<EmailSyncJob> EmailSyncJobs => Set<EmailSyncJob>();
+    public DbSet<CalendarEventPlan> CalendarEventPlans => Set<CalendarEventPlan>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
 
     public DbSet<Document> Documents => Set<Document>();
