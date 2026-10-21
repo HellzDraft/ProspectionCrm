@@ -103,7 +103,7 @@ public sealed class AutomationEventDispatcherTests(AutomationJobDatabase databas
         var workspace = await Workspace(); var rule = await ValidRule(workspace, change: r =>
             r.ConditionJson = """{"type":"context-equals","property":"number","value":1.0}""");
         await using var db = Db();
-        Assert.Equal(EmailSendPlanMigrationTests.Current, db.Database.GetMigrations().Last());
+        Assert.Equal(EmailSendDeliveryMigrationTests.Current, db.Database.GetMigrations().Last());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
         var task = db.Model.FindEntityType(typeof(CrmTask))!;
         Assert.Equal(AutomationDefinitionLimits.TaskTitleLength, task.FindProperty(nameof(CrmTask.Title))!.GetMaxLength());

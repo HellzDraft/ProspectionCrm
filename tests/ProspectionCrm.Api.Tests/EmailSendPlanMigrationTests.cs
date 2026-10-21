@@ -42,7 +42,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
             """);
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
-        Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendPlans.ToListAsync());
+        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.Empty(await db.EmailSendPlans.ToListAsync());
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         await db.GetService<IMigrator>().MigrateAsync(EmailSyncMigrationTests.Current); Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
@@ -52,7 +52,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
     public async Task FreshSchemaAndPopulatedDowngradeGuardPreserveEmailAuthorizationHistory()
     {
         var s = await PrepareAsync(); await using var db = Db();
-        Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last()); Assert.False(db.Database.HasPendingModelChanges());
         var account = new EmailAccount { WorkspaceId = s.Workspace, ConnectionId = Guid.NewGuid(), ProviderCode = "synthetic",
             ExternalAccountId = "guard", EmailAddress = "guard@example.invalid", CreatedAt = DateTimeOffset.UtcNow };
         db.Add(account); await db.SaveChangesAsync();
@@ -68,7 +68,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
     {
         var tables = await db.Database.SqlQuery<string>($"""
             SELECT tablename AS "Value" FROM pg_tables WHERE schemaname = 'public'
-                AND tablename NOT IN ('__EFMigrationsHistory','EmailSendPlans') ORDER BY tablename
+                AND tablename NOT IN ('__EFMigrationsHistory','EmailSendDeliveries','EmailSendPlans') ORDER BY tablename
             """).ToArrayAsync();
         var rows = new List<string>();
         foreach (var table in tables)
@@ -76,7 +76,7 @@ public sealed class EmailSendPlanMigrationTests : PersistentSourceIdentityFixtur
             // Names come only from PostgreSQL metadata, quoted as identifiers.
             var quoted = table.Replace("\"", "\"\"");
 #pragma warning disable EF1003 // PostgreSQL metadata identifiers, escaped above; no request values.
-            rows.AddRange((await db.Database.SqlQueryRaw<string>("SELECT (to_jsonb(t) - 'ContentFingerprint')::text AS \"Value\" FROM \"" + quoted + "\" t ORDER BY \"Value\"")
+            rows.AddRange((await db.Database.SqlQueryRaw<string>("SELECT (to_jsonb(t) - 'ContentFingerprint' - 'EvidenceNumber')::text AS \"Value\" FROM \"" + quoted + "\" t ORDER BY \"Value\"")
                 .ToArrayAsync()).Select(x => table + ":" + x));
 #pragma warning restore EF1003
         }

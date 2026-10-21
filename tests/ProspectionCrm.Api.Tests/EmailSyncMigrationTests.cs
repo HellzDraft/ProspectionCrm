@@ -43,7 +43,7 @@ public sealed class EmailSyncMigrationTests : PersistentSourceIdentityFixture
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
-        Assert.Equal(EmailSendPlanMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(EmailSendDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Empty(await db.EmailAccounts.ToListAsync()); Assert.Empty(await db.EmailSyncStates.ToListAsync()); Assert.Empty(await db.EmailSyncJobs.ToListAsync());
         Assert.All(await db.EmailMessages.ToListAsync(), x => Assert.Null(x.EmailAccountId));
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());
@@ -107,7 +107,7 @@ public sealed class EmailSyncMigrationTests : PersistentSourceIdentityFixture
         SELECT (to_jsonb(e) - 'EmailAccountId')::text AS "Value" FROM "EmailMessages" e
         UNION ALL SELECT to_jsonb(o)::text FROM "IntegrationOperations" o
         UNION ALL SELECT to_jsonb(a)::text FROM "IntegrationAttempts" a
-        UNION ALL SELECT to_jsonb(r)::text FROM "IntegrationReceipts" r
+        UNION ALL SELECT (to_jsonb(r) - 'EvidenceNumber')::text FROM "IntegrationReceipts" r
         UNION ALL SELECT to_jsonb(i)::text FROM "RemoteCollectionIntents" i
         UNION ALL SELECT to_jsonb(j)::text FROM "SourceCollectionJobs" j
         ORDER BY "Value"

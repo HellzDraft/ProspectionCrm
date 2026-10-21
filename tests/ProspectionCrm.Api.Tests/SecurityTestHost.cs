@@ -30,6 +30,7 @@ public sealed class SecurityTestHost(string connectionString, Guid user, Guid wo
     };
     public TestClock Clock { get; } = new();
     public Func<HttpMessageHandler>? TransportHandler { get; set; }
+    public ProspectionCrm.Api.Services.Email.IEmailSendTransport? EmailSendTransport { get; set; }
     public bool ConfigureOperator { get; set; } = true;
 
     public static async Task<SecurityTestHost> CreateAsync(AutomationJobDatabase database, Guid? existingWorkspace = null)
@@ -68,6 +69,11 @@ public sealed class SecurityTestHost(string connectionString, Guid user, Guid wo
             services.AddSingleton<IStartupFilter, TestServerRawTarget>();
             services.RemoveAll<TimeProvider>(); services.AddSingleton<TimeProvider>(Clock);
             if (TransportHandler is not null) services.AddHttpClient<IntegrationTransport>().ConfigurePrimaryHttpMessageHandler(TransportHandler);
+            if (EmailSendTransport is not null)
+            {
+                services.RemoveAll<ProspectionCrm.Api.Services.Email.IEmailSendTransport>();
+                services.AddSingleton(EmailSendTransport);
+            }
         });
     }
     // TestServer omits RawTarget; supply the HTTP feature that Kestrel provides in production.

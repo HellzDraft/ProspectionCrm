@@ -23,7 +23,7 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
             t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
             t.HasCheckConstraint("CK_IntegrationOperations_Contract", """
                 "Version" = 1 AND (("Type" = 'technical.probe' AND "ProbeId" <> '00000000-0000-0000-0000-000000000000'::uuid)
-                OR ("Type" IN ('collection.request','email.sync') AND "ConnectionId" IS NOT NULL AND "ProbeId" = '00000000-0000-0000-0000-000000000000'::uuid))
+                OR ("Type" IN ('collection.request','email.sync','email.send') AND "ConnectionId" IS NOT NULL AND "ProbeId" = '00000000-0000-0000-0000-000000000000'::uuid))
                 """);
             t.HasCheckConstraint("CK_IntegrationOperations_Status", "\"StatusCode\" IN ('pending','awaiting-result','result-received','succeeded','failed')");
             t.HasCheckConstraint("CK_IntegrationOperations_Revision", "\"Revision\" >= 0");
@@ -69,7 +69,9 @@ public sealed class IntegrationReceiptConfiguration : IEntityTypeConfiguration<I
         b.HasKey(x => x.MessageId);
         b.HasOne<IntegrationOperation>().WithMany().HasForeignKey(x => x.OperationId).OnDelete(DeleteBehavior.Restrict);
         // The first probe expects exactly one terminal result, independently of delivery retries.
-        b.HasIndex(x => x.OperationId).IsUnique();
+        // Historical protocols retain slot zero; email.send keeps successive reconciliation evidence.
+        b.Property(x => x.EvidenceNumber).HasDefaultValue(0);
+        b.HasIndex(x => new { x.OperationId, x.EvidenceNumber }).IsUnique();
         b.HasIndex(x => new { x.ReceivedAt, x.MessageId }).HasFilter("\"ProcessedAt\" IS NULL");
         b.Property(x => x.CanonicalContent).HasColumnType("text").IsRequired();
         b.Property(x => x.ContentSha256).HasMaxLength(64).IsRequired();

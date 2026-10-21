@@ -1534,6 +1534,111 @@ namespace ProspectionCrm.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AutomationActionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiagnosticCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("EmailAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("EmailMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmailSendPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalMessageId")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("IntegrationOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("EmailMessageId");
+
+                    b.HasIndex("EmailSendPlanId")
+                        .IsUnique();
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("IntegrationOperationId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "AutomationActionRequestId");
+
+                    b.HasIndex("WorkspaceId", "EmailSendPlanId");
+
+                    b.HasIndex("WorkspaceId", "EmailAccountId", "ConnectionId");
+
+                    b.HasIndex("WorkspaceId", "StatusCode", "CreatedAt");
+
+                    b.ToTable("EmailSendDeliveries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_EmailSendDeliveries_Dates", "(\"StartedAt\" IS NULL OR \"StartedAt\" >= \"CreatedAt\") AND (\"FinishedAt\" IS NULL OR \"FinishedAt\" >= \"CreatedAt\")");
+
+                            t.HasCheckConstraint("CK_EmailSendDeliveries_Identity", "\"OperationType\" = 'email.send' AND \"ContentHash\" ~ '^[0-9a-f]{64}$' AND \"IdempotencyKey\" = 'email-send-' || \"Id\"::text");
+
+                            t.HasCheckConstraint("CK_EmailSendDeliveries_Proof", "(\"StatusCode\" = 'sent') = (\"EmailMessageId\" IS NOT NULL AND \"ExternalMessageId\" IS NOT NULL) AND (\"StatusCode\" IN ('sent','failed')) = (\"FinishedAt\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_EmailSendDeliveries_Status", "\"StatusCode\" IN ('pending','dispatching','awaiting-result','send-unknown','result-received','sent','failed')");
+                        });
+                });
+
             modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1939,7 +2044,7 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                             t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
-                            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND ((\"Type\" = 'technical.probe' AND \"ProbeId\" <> '00000000-0000-0000-0000-000000000000'::uuid)\r\nOR (\"Type\" IN ('collection.request','email.sync') AND \"ConnectionId\" IS NOT NULL AND \"ProbeId\" = '00000000-0000-0000-0000-000000000000'::uuid))");
+                            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND ((\"Type\" = 'technical.probe' AND \"ProbeId\" <> '00000000-0000-0000-0000-000000000000'::uuid)\r\nOR (\"Type\" IN ('collection.request','email.sync','email.send') AND \"ConnectionId\" IS NOT NULL AND \"ProbeId\" = '00000000-0000-0000-0000-000000000000'::uuid))");
 
                             t.HasCheckConstraint("CK_IntegrationOperations_Ids", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid\r\nAND \"CommandMessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid\r\nAND \"CorrelationId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
@@ -1964,6 +2069,11 @@ namespace ProspectionCrm.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("EvidenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("OperationId")
                         .HasColumnType("uuid");
 
@@ -1975,7 +2085,7 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                     b.HasKey("MessageId");
 
-                    b.HasIndex("OperationId")
+                    b.HasIndex("OperationId", "EvidenceNumber")
                         .IsUnique();
 
                     b.HasIndex("ReceivedAt", "MessageId")
@@ -3705,6 +3815,41 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Navigation("Opportunity");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendDelivery", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.EmailMessage", null)
+                        .WithMany()
+                        .HasForeignKey("EmailMessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.IntegrationOperation", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationOperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "AutomationActionRequestId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.EmailSendPlan", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "EmailSendPlanId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.EmailAccount", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "EmailAccountId", "ConnectionId")
+                        .HasPrincipalKey("WorkspaceId", "Id", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProspectionCrm.Api.Entities.EmailSendPlan", b =>
