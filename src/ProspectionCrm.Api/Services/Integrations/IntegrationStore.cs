@@ -16,7 +16,7 @@ public enum IntegrationTransportOutcome { Acknowledged, Failed, Unknown }
 public enum IntegrationReception { Recorded, AlreadyRecorded }
 
 // All updates use untracked reads and SQL in their own transaction; no unrelated tracked changes are saved.
-public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock, RemoteCollectionState? collections = null, EmailSyncService? emails = null, EmailSendDeliveryService? deliveries = null, CalendarSyncService? calendars = null)
+public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider clock, RemoteCollectionState? collections = null, EmailSyncService? emails = null, EmailSendDeliveryService? deliveries = null, CalendarSyncService? calendars = null, CalendarEventDeliveryService? calendarDeliveries = null)
 {
     public async Task<IntegrationOperation> CreateProbeAsync(Guid workspaceId, Guid? connectionId = null, CancellationToken token = default)
     {
@@ -86,6 +86,8 @@ public sealed class IntegrationStore(ProspectionCrmDbContext db, TimeProvider cl
 
     public async Task<IntegrationReception> ReceiveAsync(IntegrationAccess access, string json, CancellationToken token = default)
     {
+        if (CalendarEventContracts.IsCalendarEvent(json))
+            return await (calendarDeliveries ?? throw new IntegrationAccessException()).ReceiveAsync(access, json, token);
         if (EmailSendContracts.IsEmailSend(json))
             return await (deliveries ?? throw Conflict("email-send-receiver-unavailable")).ReceiveAsync(access, json, token);
         if (CalendarSyncContracts.IsCalendarSync(Encoding.UTF8.GetBytes(json)))

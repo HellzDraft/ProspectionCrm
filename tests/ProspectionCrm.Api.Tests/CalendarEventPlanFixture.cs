@@ -11,6 +11,7 @@ namespace ProspectionCrm.Api.Tests;
 
 public abstract class CalendarEventPlanFixture(AutomationJobDatabase database)
 {
+    protected AutomationJobDatabase Database => database;
     protected ProspectionCrmDbContext Db() => database.Db();
     protected sealed class NoNetwork : HttpMessageHandler
     {
@@ -28,9 +29,10 @@ public abstract class CalendarEventPlanFixture(AutomationJobDatabase database)
         public Guid Workspace => Host.Operator.WorkspaceId;
         public void Dispose() { Client.Dispose(); Host.Dispose(); }
     }
-    protected async Task<Scenario> Prepare()
+    protected async Task<Scenario> Prepare(ProspectionCrm.Api.Services.Calendar.ICalendarEventTransport? transport = null)
     {
         var host = await SecurityTestHost.CreateAsync(database); var network = new NoNetwork(); host.TransportHandler = () => network;
+        host.CalendarEventTransport = transport;
         var client = host.Client(); await SecurityTestHost.LoginAsync(client);
         await using var db = Db();
         db.AutomationRuntimeSettings.Add(new() { WorkspaceId = host.Operator.WorkspaceId, IsEnabled = true, OperatingModeCode = "automatic" });

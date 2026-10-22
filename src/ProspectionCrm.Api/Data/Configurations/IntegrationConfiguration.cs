@@ -23,7 +23,7 @@ public sealed class IntegrationOperationConfiguration : IEntityTypeConfiguration
             t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
             t.HasCheckConstraint("CK_IntegrationOperations_Contract", """
                 "Version" = 1 AND (("Type" = 'technical.probe' AND "ProbeId" <> '00000000-0000-0000-0000-000000000000'::uuid)
-                OR ("Type" IN ('collection.request','email.sync','email.send','calendar.sync') AND "ConnectionId" IS NOT NULL AND "ProbeId" = '00000000-0000-0000-0000-000000000000'::uuid))
+                OR ("Type" IN ('collection.request','email.sync','email.send','calendar.sync','calendar.event.create','calendar.event.update') AND "ConnectionId" IS NOT NULL AND "ProbeId" = '00000000-0000-0000-0000-000000000000'::uuid))
                 """);
             t.HasCheckConstraint("CK_IntegrationOperations_Status", "\"StatusCode\" IN ('pending','awaiting-result','result-received','succeeded','failed')");
             t.HasCheckConstraint("CK_IntegrationOperations_Revision", "\"Revision\" >= 0");

@@ -118,7 +118,8 @@ public sealed class IntegrationAuthenticationHandler(IOptionsMonitor<Authenticat
         if (size > CollectionIntegrationContracts.MaxResultBytes
             || size > IntegrationContracts.MaxEnvelopeBytes && !CollectionIntegrationContracts.IsCollection(bytes.AsMemory(0, size))
                 && !EmailSyncContracts.IsEmailSync(bytes.AsMemory(0, size))
-                && !CalendarSyncContracts.IsCalendarSync(bytes.AsMemory(0, size)))
+                && !CalendarSyncContracts.IsCalendarSync(bytes.AsMemory(0, size))
+                && !(size <= CalendarEventContracts.MaxBytes && CalendarEventContracts.IsCalendarEvent(Encoding.UTF8.GetString(bytes, 0, size))))
         { Context.Items["integration-auth-status"] = 413; return AuthenticateResult.Fail("body-too-large"); }
         var body = bytes.AsSpan(0, size).ToArray();
         var expected = IntegrationSignature.Sign(Convert.FromBase64String(key.SecretBase64), IntegrationSignature.IncomingAudience,

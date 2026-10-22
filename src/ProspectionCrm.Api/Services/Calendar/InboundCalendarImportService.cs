@@ -57,5 +57,5 @@ public sealed class InboundCalendarImportService(ProspectionCrmDbContext db)
         }
         return new(created, existing, updated, null);
     }
-    private static string Hash(InboundCalendarEvent value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value))));
+    internal static string Hash(InboundCalendarEvent value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value))));
 }

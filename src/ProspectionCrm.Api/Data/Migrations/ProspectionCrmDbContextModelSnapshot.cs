@@ -1030,6 +1030,142 @@ namespace ProspectionCrm.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AutomationActionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CalendarEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarEventPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiagnosticCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ExternalCalendarId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ExternalEventId")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long?>("ExternalRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("IntegrationOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ProofHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StatusCode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid?>("TargetCalendarEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TargetContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("TargetExternalEventId")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long?>("TargetExternalRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AutomationActionRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("CalendarEventPlanId")
+                        .IsUnique();
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("IntegrationOperationId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "AutomationActionRequestId");
+
+                    b.HasIndex("WorkspaceId", "CalendarEventId");
+
+                    b.HasIndex("WorkspaceId", "CalendarEventPlanId");
+
+                    b.HasIndex("WorkspaceId", "TargetCalendarEventId");
+
+                    b.HasIndex("WorkspaceId", "StatusCode", "CreatedAt");
+
+                    b.HasIndex("WorkspaceId", "CalendarId", "CalendarAccountId", "ConnectionId");
+
+                    b.ToTable("CalendarEventDeliveries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CalendarDelivery_Dates", "(\"StartedAt\" IS NULL OR \"StartedAt\" >= \"CreatedAt\") AND (\"FinishedAt\" IS NULL OR \"FinishedAt\" >= \"StartedAt\")");
+
+                            t.HasCheckConstraint("CK_CalendarDelivery_Identity", "\"ContentHash\" ~ '^[0-9a-f]{64}$' AND \"IdempotencyKey\" = 'calendar-event-' || \"Id\"::text");
+
+                            t.HasCheckConstraint("CK_CalendarDelivery_State", "\"StatusCode\" IN ('pending','dispatching','awaiting-result','operation-unknown','result-received','succeeded','failed','conflict')\nAND (\"StatusCode\" = 'pending') = (\"StartedAt\" IS NULL)\nAND (\"StatusCode\" IN ('succeeded','failed','conflict')) = (\"FinishedAt\" IS NOT NULL)\nAND (\"StatusCode\" <> 'succeeded' OR (\"CalendarEventId\" IS NOT NULL AND \"ExternalEventId\" IS NOT NULL AND \"ExternalRevision\" IS NOT NULL AND \"ProofHash\" IS NOT NULL))\nAND (\"ExternalRevision\" IS NULL OR \"ExternalRevision\" >= 0)\nAND (\"ProofHash\" IS NULL OR \"ProofHash\" ~ '^[0-9a-f]{64}$')");
+
+                            t.HasCheckConstraint("CK_CalendarDelivery_Target", "(\"OperationType\" = 'calendar.event.create' AND \"TargetCalendarEventId\" IS NULL AND \"TargetExternalEventId\" IS NULL\n    AND \"TargetExternalRevision\" IS NULL AND \"TargetContentHash\" IS NULL)\nOR (\"OperationType\" = 'calendar.event.update' AND \"TargetCalendarEventId\" IS NOT NULL AND \"TargetExternalEventId\" IS NOT NULL\n    AND \"TargetExternalRevision\" IS NOT NULL AND \"TargetExternalRevision\" >= 0 AND \"TargetContentHash\" IS NOT NULL AND \"TargetContentHash\" ~ '^[0-9a-f]{64}$')");
+                        });
+                });
+
             modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2471,7 +2607,7 @@ namespace ProspectionCrm.Api.Data.Migrations
 
                             t.HasCheckConstraint("CK_IntegrationOperations_Connection", "\"ConnectionId\" IS NULL OR \"ConnectionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
-                            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND ((\"Type\" = 'technical.probe' AND \"ProbeId\" <> '00000000-0000-0000-0000-000000000000'::uuid)\r\nOR (\"Type\" IN ('collection.request','email.sync','email.send','calendar.sync') AND \"ConnectionId\" IS NOT NULL AND \"ProbeId\" = '00000000-0000-0000-0000-000000000000'::uuid))");
+                            t.HasCheckConstraint("CK_IntegrationOperations_Contract", "\"Version\" = 1 AND ((\"Type\" = 'technical.probe' AND \"ProbeId\" <> '00000000-0000-0000-0000-000000000000'::uuid)\r\nOR (\"Type\" IN ('collection.request','email.sync','email.send','calendar.sync','calendar.event.create','calendar.event.update') AND \"ConnectionId\" IS NOT NULL AND \"ProbeId\" = '00000000-0000-0000-0000-000000000000'::uuid))");
 
                             t.HasCheckConstraint("CK_IntegrationOperations_Ids", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid\r\nAND \"CommandMessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid\r\nAND \"CorrelationId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
@@ -4018,6 +4154,48 @@ namespace ProspectionCrm.Api.Data.Migrations
                     b.Navigation("Opportunity");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventDelivery", b =>
+                {
+                    b.HasOne("ProspectionCrm.Api.Entities.IntegrationOperation", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationOperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.AutomationActionRequest", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "AutomationActionRequestId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.CalendarEvent", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CalendarEventId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.CalendarEventPlan", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CalendarEventPlanId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProspectionCrm.Api.Entities.CalendarEvent", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "TargetCalendarEventId")
+                        .HasPrincipalKey("WorkspaceId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProspectionCrm.Api.Entities.Calendar", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "CalendarId", "CalendarAccountId", "ConnectionId")
+                        .HasPrincipalKey("WorkspaceId", "Id", "CalendarAccountId", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProspectionCrm.Api.Entities.CalendarEventPlan", b =>

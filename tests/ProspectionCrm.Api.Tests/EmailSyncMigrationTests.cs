@@ -43,7 +43,7 @@ public sealed class EmailSyncMigrationTests : PersistentSourceIdentityFixture
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var before = await Snapshot(db);
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db));
-        Assert.Equal(CalendarEventPlanMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(CalendarEventDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Empty(await db.EmailAccounts.ToListAsync()); Assert.Empty(await db.EmailSyncStates.ToListAsync()); Assert.Empty(await db.EmailSyncJobs.ToListAsync());
         Assert.All(await db.EmailMessages.ToListAsync(), x => Assert.Null(x.EmailAccountId));
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.Database.GetPendingMigrationsAsync());

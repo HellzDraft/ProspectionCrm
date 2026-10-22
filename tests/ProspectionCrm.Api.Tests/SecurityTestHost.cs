@@ -31,6 +31,7 @@ public sealed class SecurityTestHost(string connectionString, Guid user, Guid wo
     public TestClock Clock { get; } = new();
     public Func<HttpMessageHandler>? TransportHandler { get; set; }
     public ProspectionCrm.Api.Services.Email.IEmailSendTransport? EmailSendTransport { get; set; }
+    public ProspectionCrm.Api.Services.Calendar.ICalendarEventTransport? CalendarEventTransport { get; set; }
     public bool ConfigureOperator { get; set; } = true;
 
     public static async Task<SecurityTestHost> CreateAsync(AutomationJobDatabase database, Guid? existingWorkspace = null)
@@ -73,6 +74,11 @@ public sealed class SecurityTestHost(string connectionString, Guid user, Guid wo
             {
                 services.RemoveAll<ProspectionCrm.Api.Services.Email.IEmailSendTransport>();
                 services.AddSingleton(EmailSendTransport);
+            }
+            if (CalendarEventTransport is not null)
+            {
+                services.RemoveAll<ProspectionCrm.Api.Services.Calendar.ICalendarEventTransport>();
+                services.AddSingleton(CalendarEventTransport);
             }
         });
     }

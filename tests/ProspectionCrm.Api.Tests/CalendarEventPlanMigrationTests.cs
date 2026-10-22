@@ -44,7 +44,7 @@ public sealed class CalendarEventPlanMigrationTests : PersistentSourceIdentityFi
         db.Add(new IntegrationReceipt { EvidenceNumber = 1, MessageId = Guid.NewGuid(), OperationId = operation.Id, CanonicalContent = "{}", ContentSha256 = new string('a',64), ReceivedAt = now });
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var before = await Snapshot(db); await db.Database.MigrateAsync();
-        Assert.Equal(before, await Snapshot(db)); Assert.Equal(Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(before, await Snapshot(db)); Assert.Equal(CalendarEventDeliveryMigrationTests.Current, (await db.Database.GetAppliedMigrationsAsync()).Last());
         Assert.False(db.Database.HasPendingModelChanges()); Assert.Empty(await db.CalendarEventPlans.ToListAsync());
         await db.GetService<IMigrator>().MigrateAsync(CalendarSyncMigrationTests.Current); Assert.Equal(before, await Snapshot(db));
         await db.Database.MigrateAsync(); Assert.Equal(before, await Snapshot(db)); Assert.False(db.Database.HasPendingModelChanges());

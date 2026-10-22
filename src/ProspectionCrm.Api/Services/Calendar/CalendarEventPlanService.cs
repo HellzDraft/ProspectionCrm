@@ -165,7 +165,7 @@ public sealed class CalendarEventPlanService(ProspectionCrmDbContext db, Calenda
             throw new CalendarSyncException("CalendarPlanTargetUnavailable");
         return CalendarEventSnapshots.Target(e);
     }
-    private async Task Revalidate(CalendarEventPlan plan, CancellationToken token)
+    internal async Task Revalidate(CalendarEventPlan plan, CancellationToken token)
     {
         await Calendar(plan.WorkspaceId, plan.CalendarId, plan.CalendarAccountId, plan.ConnectionId, token);
         var content = Content(plan);
