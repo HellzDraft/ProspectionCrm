@@ -7,7 +7,7 @@ using ProspectionCrm.Api.Dtos.Integrations;
 namespace ProspectionCrm.Api.Services.Integrations;
 
 // Metadata only. No dispatcher, processor, circuit service or network dependency.
-public sealed class IntegrationSupervisionService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspace, TimeProvider clock)
+public sealed partial class IntegrationSupervisionService(ProspectionCrmDbContext db, ICurrentWorkspaceProvider workspace, TimeProvider clock)
 {
     public const int OldAttemptMinutes = 5;
     public const int OldWaitingMinutes = 30;

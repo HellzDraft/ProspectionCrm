@@ -24,7 +24,10 @@ public sealed class IntegrationSupervisionHistoryTests(AutomationJobDatabase dat
     [InlineData(EmailSendTransportOutcome.Acknowledged, "waiting")]
     [InlineData(EmailSendTransportOutcome.Unknown, "uncertain")]
     [InlineData(EmailSendTransportOutcome.NotSent, "failed")]
-    public async Task EmailDeliveryStatesRemainIndependentOfObservation(EmailSendTransportOutcome outcome, string expected)
+    [InlineData(EmailSendTransportOutcome.Acknowledged, "waiting", 3, false)]
+    [InlineData(EmailSendTransportOutcome.Acknowledged, "evidence-pending", 3, true)]
+    public async Task EmailDeliveryStatesRemainIndependentOfObservation(EmailSendTransportOutcome outcome, string expected,
+        int ageMinutes = 0, bool evidence = false)
     {
         using var host = await SecurityTestHost.CreateAsync(database); var transport = new EmailTransport(outcome); host.EmailSendTransport = transport;
         using var client = host.Client(); await SecurityTestHost.LoginAsync(client);
@@ -37,15 +40,55 @@ public sealed class IntegrationSupervisionHistoryTests(AutomationJobDatabase dat
             ["recipient@example.invalid"], [], "Private subject sentinel", "Private body sentinel"))).Content.ReadFromJsonAsync<EmailSendPlanDto>())!;
         plan = (await (await client.PostAsJsonAsync($"/api/email-send-plans/{plan.Id}/submit", new { revision = plan.Revision })).Content.ReadFromJsonAsync<EmailSendPlanDto>())!;
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync($"/api/automation-action-requests/{plan.AutomationActionRequestId}/approve", new { })).StatusCode);
-        var delivery = (await (await client.PostAsync($"/api/email-send-deliveries/from-plan/{plan.Id}", null)).Content.ReadFromJsonAsync<EmailSendDelivery>())!;
-        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync($"/api/email-send-deliveries/{delivery.Id}/dispatch", null)).StatusCode);
+        EmailSendDelivery delivery;
+        if (ageMinutes > 0)
+        {
+            var started = DateTimeOffset.UtcNow.AddMinutes(-ageMinutes);
+            var storedPlan = await db.EmailSendPlans.AsNoTracking().SingleAsync(x => x.Id == plan.Id);
+            var op = new IntegrationOperation { Id = Guid.NewGuid(), WorkspaceId = host.Operator.WorkspaceId,
+                ConnectionId = host.Integration.ConnectionId, CommandMessageId = Guid.NewGuid(), CorrelationId = Guid.NewGuid(),
+                Type = "email.send", Version = 1, StatusCode = "awaiting-result", CreatedAt = started.AddSeconds(-1) };
+            delivery = new() { WorkspaceId = op.WorkspaceId, EmailSendPlanId = plan.Id,
+                AutomationActionRequestId = plan.AutomationActionRequestId!.Value, EmailAccountId = account.Id,
+                ConnectionId = op.ConnectionId.Value, IntegrationOperationId = op.Id, ContentHash = storedPlan.ContentHash,
+                ProviderCode = "synthetic", IdempotencyKey = "",
+                CreatedAt = op.CreatedAt, StartedAt = started, StatusCode = "awaiting-result" };
+            delivery.IdempotencyKey = $"email-send-{delivery.Id:D}";
+            db.AddRange(op, delivery, new IntegrationAttempt { Id = Guid.NewGuid(), OperationId = op.Id, Number = 1,
+                StatusCode = "acknowledged", StartedAt = started, FinishedAt = started.AddSeconds(1) });
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            delivery = (await (await client.PostAsync($"/api/email-send-deliveries/from-plan/{plan.Id}", null)).Content.ReadFromJsonAsync<EmailSendDelivery>())!;
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync($"/api/email-send-deliveries/{delivery.Id}/dispatch", null)).StatusCode);
+        }
+        var expectedCalls = ageMinutes > 0 ? 0 : 1;
+        if (evidence)
+        {
+            db.IntegrationReceipts.Add(new() { MessageId = Guid.NewGuid(), OperationId = delivery.IntegrationOperationId, EvidenceNumber = 1,
+                CanonicalContent = "private@example.invalid unvalidated proof", ContentSha256 = new string('a', 64), ReceivedAt = host.Clock.Now });
+            await db.SaveChangesAsync();
+        }
         var before = await IntegrationSupervisionTests.Fingerprint(db);
         var response = await client.GetStringAsync(IntegrationSupervisionTests.Root + "/operations");
         foreach (var secret in new[] { "private@example.invalid", "recipient@example.invalid", "Private subject sentinel", "Private body sentinel", delivery.ContentHash, delivery.IdempotencyKey })
             Assert.DoesNotContain(secret, response);
         var item = Assert.Single((await client.GetFromJsonAsync<IntegrationSupervisionPage>(IntegrationSupervisionTests.Root + "/operations"))!.Items);
-        Assert.Equal(delivery.Id, item.BusinessId); Assert.Equal(expected, item.State); Assert.Equal(1, transport.Calls);
+        Assert.Equal(delivery.Id, item.BusinessId); Assert.Equal(expected, item.State); Assert.Equal(expectedCalls, transport.Calls);
+        var diagnostic = (await client.GetFromJsonAsync<IntegrationOperationDiagnostic>(IntegrationDiagnosticTests.Route(item.Id)))!;
+        Assert.Equal(expected, diagnostic.Operation.State);
+        var available = ageMinutes > 0 && !evidence;
+        Assert.Equal(available ? "available-at-observation" : expected is "uncertain" or "evidence-pending" ? "requires-validation" : "not-recommended", diagnostic.Reconciliation.StatusCode);
+        Assert.Equal(expectedCalls, transport.Calls);
         Assert.Equal(before, await IntegrationSupervisionTests.Fingerprint(db));
+        if (available)
+        {
+            Assert.Contains("HumanReconciliationAvailable", diagnostic.RecommendationCodes);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync($"/api/email-send-deliveries/{delivery.Id}/reconcile", null)).StatusCode);
+            Assert.Equal("send-unknown", await db.EmailSendDeliveries.Where(x => x.Id == delivery.Id).Select(x => x.StatusCode).SingleAsync());
+            Assert.Equal(expectedCalls, transport.Calls);
+        }
     }
 
     private sealed class CollectionTransport(bool unknown) : HttpMessageHandler
@@ -75,6 +118,9 @@ public sealed class IntegrationSupervisionHistoryTests(AutomationJobDatabase dat
         Assert.Equal(intent.JobId, item.BusinessId); Assert.Equal(intent.OperationId, item.Id); Assert.Equal(expected, item.State);
         var raw = await client.GetStringAsync(IntegrationSupervisionTests.Root + "/operations");
         Assert.DoesNotContain("sentinel", raw); Assert.DoesNotContain(intent.Fingerprint, raw);
+        var diagnostic = (await client.GetFromJsonAsync<IntegrationOperationDiagnostic>(IntegrationDiagnosticTests.Route(item.Id)))!;
+        Assert.Equal(expected, diagnostic.Operation.State);
+        Assert.Contains(expected == "uncertain" ? "ManualInvestigationRequired" : "WaitForEvidence", diagnostic.RecommendationCodes);
         Assert.Equal(1, transport.Calls); Assert.Equal(before, await IntegrationSupervisionTests.Fingerprint(db));
     }
 }

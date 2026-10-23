@@ -13,6 +13,16 @@ public sealed class IntegrationSupervisionController(IntegrationSupervisionServi
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken token) => Ok(await service.SnapshotAsync(token));
 
+    [HttpGet("operations/{id:guid}/diagnostic")]
+    public async Task<IActionResult> Diagnostic(Guid id, CancellationToken token,
+        int attemptOffset = 0, int receiptOffset = 0, int limit = 50)
+    {
+        if (attemptOffset is < 0 or > 1000000 || receiptOffset is < 0 or > 1000000 || limit is < 1 or > 100)
+            return IntegrationSupervisionErrorsAttribute.Failure(400, "InvalidRequest");
+        var result = await service.DiagnosticAsync(id, attemptOffset, receiptOffset, limit, token);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     [HttpGet("operations")]
     public async Task<IActionResult> Operations(CancellationToken token, int offset = 0, int limit = 50,
         string? type = null, string? status = null, string? state = null)

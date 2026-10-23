@@ -54,11 +54,15 @@ public sealed class IntegrationSupervisionTests(AutomationJobDatabase database) 
     public async Task EverySupervisionQueryRunsInsidePostgresReadOnlyRepeatableReadTransaction()
     {
         using var host = await SecurityTestHost.CreateAsync(database); var audit = new ReadOnlyAudit();
+        var op = Operation(host);
+        await using (var seed = database.Db()) { seed.Add(op); await seed.SaveChangesAsync(); }
         await using var db = new ProspectionCrmDbContext(new DbContextOptionsBuilder<ProspectionCrmDbContext>()
             .UseNpgsql(database.Postgres.GetConnectionString()).AddInterceptors(audit).Options);
         var service = new IntegrationSupervisionService(db, new Workspace(host.Operator.WorkspaceId), host.Clock);
         await service.SnapshotAsync(default); await service.ListAsync(0, 50, null, null, null, default);
-        Assert.Equal(4, audit.Reads); Assert.Empty(db.ChangeTracker.Entries());
+        Assert.Null(await service.DiagnosticAsync(Guid.NewGuid(), 0, 0, 50, default));
+        Assert.NotNull(await service.DiagnosticAsync(op.Id, 0, 0, 50, default));
+        Assert.Equal(10, audit.Reads); Assert.Empty(db.ChangeTracker.Entries());
     }
 
     [Fact]
