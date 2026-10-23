@@ -45,6 +45,7 @@ builder.Services.AddScoped<IAutomationJobQueue, AutomationJobQueue>();
 builder.Services.AddScoped<AutomationJobService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IntegrationStore>();
+builder.Services.AddScoped<IntegrationSupervisionService>();
 builder.Services.AddScoped<CalendarAccountService>();
 builder.Services.AddScoped<CalendarCatalogService>();
 builder.Services.AddScoped<CalendarSyncService>();
