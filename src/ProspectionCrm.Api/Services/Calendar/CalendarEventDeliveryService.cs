@@ -46,7 +46,7 @@ public sealed partial class CalendarEventDeliveryService(ProspectionCrmDbContext
     internal async Task<(CalendarEventCommand Command, Guid Attempt)> BeginAsync(Guid workspace, Guid id, CancellationToken token)
     {
         await Human(workspace, token);
-        await using var tx = await db.Database.BeginTransactionAsync(token); await Lock(workspace, token);
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, token); await Lock(workspace, token);
         await Human(workspace, token);
         var initial = await FindAsync(workspace, id, token) ?? throw Error("CalendarDeliveryNotFound", 404);
         var (plan, calendar) = await Authorize(workspace, initial.CalendarEventPlanId, token);
@@ -56,7 +56,10 @@ public sealed partial class CalendarEventDeliveryService(ProspectionCrmDbContext
             throw Error("CalendarDeliveryNotDispatchable");
         var command = Command(d, op, plan);
         _ = CalendarEventContracts.Serialize(command);
-        var now = await CalendarSyncLocks.Now(db, token); var attempt = Guid.NewGuid();
+        var (now, refusal) = await IntegrationDispatchBudget.CheckUnderRuntimeLockAsync(db, workspace, d.ConnectionId,
+            integrations.CurrentValue.DispatchLimits, token);
+        if (refusal is not null) throw Error(refusal);
+        var attempt = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "IntegrationAttempts" ("Id","OperationId","Number","StatusCode","StartedAt") VALUES ({attempt},{op.Id},1,'started',{now})
             """, token);

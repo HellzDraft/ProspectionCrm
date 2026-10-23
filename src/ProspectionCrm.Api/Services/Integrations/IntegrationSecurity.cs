@@ -32,6 +32,7 @@ public sealed class IntegrationOptions
 {
     public bool Enabled { get; set; }
     public EmailSyncTransportOptions EmailSync { get; set; } = new();
+    public IntegrationDispatchLimits DispatchLimits { get; set; } = new();
     public EmailSyncTransportOptions CalendarSync { get; set; } = new();
     public EmailSyncTransportOptions CalendarEvent { get; set; } = new();
     public EmailSyncTransportOptions EmailSend { get; set; } = new();
@@ -43,7 +44,8 @@ public sealed class IntegrationOptions
     public int ClockWindowSeconds { get; set; } = 300;
     public IntegrationKey OutgoingKey { get; set; } = new();
     public List<IntegrationKey> IncomingKeys { get; set; } = [];
-    public bool IsValid(OperatorOptions human) => (!EmailSync.Enabled || Enabled && EmailSync.IsValid())
+    public bool IsValid(OperatorOptions human) => DispatchLimits is not null && DispatchLimits.IsValid()
+        && (!EmailSync.Enabled || Enabled && EmailSync.IsValid())
         && (!CalendarSync.Enabled || Enabled && CalendarSync.IsValid())
         && (!CalendarEvent.Enabled || Enabled && CalendarEvent.IsValid())
         && (!EmailSend.Enabled || Enabled && EmailSend.IsValid())

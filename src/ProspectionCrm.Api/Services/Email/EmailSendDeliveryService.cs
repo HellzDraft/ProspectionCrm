@@ -43,7 +43,7 @@ public sealed class EmailSendDeliveryService(ProspectionCrmDbContext db, EmailAc
     internal async Task<(EmailSendCommand Command, Guid Attempt)> BeginAsync(Guid workspace, Guid id, CancellationToken token)
     {
         await Human(workspace, token);
-        await using var tx = await db.Database.BeginTransactionAsync(token);
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, token);
         await Lock(workspace, token);
         var initial = await FindAsync(workspace, id, token) ?? throw Error("EmailDeliveryNotFound", 404);
         var (plan, account) = await Authorize(workspace, initial.EmailSendPlanId, token);
@@ -60,7 +60,10 @@ public sealed class EmailSendDeliveryService(ProspectionCrmDbContext db, EmailAc
         var command = new EmailSendCommand(1, op.CommandMessageId, op.Id, op.CorrelationId, "email.send", d.Id,
             d.IdempotencyKey, EmailSendSnapshots.From(plan));
         _ = EmailSendContracts.Serialize(command);
-        var attempt = Guid.NewGuid(); var now = await EmailSyncLocks.Now(db, token);
+        var (now, refusal) = await IntegrationDispatchBudget.CheckUnderRuntimeLockAsync(db, workspace, d.ConnectionId,
+            integrations.CurrentValue.DispatchLimits, token);
+        if (refusal is not null) throw Error(refusal);
+        var attempt = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "IntegrationAttempts" ("Id","OperationId","Number","StatusCode","StartedAt") VALUES ({attempt},{op.Id},1,'started',{now})
             """, token);
