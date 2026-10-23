@@ -13,4 +13,5 @@ public sealed record IntegrationOperationDiagnostic(DateTimeOffset ObservedAt, I
     IReadOnlyList<string> AnomalyCodes, IReadOnlyList<string> RecommendationCodes,
     IntegrationReconciliationReview Reconciliation,
     IntegrationDiagnosticPage<IntegrationAttemptMetadata> Attempts,
-    IntegrationDiagnosticPage<IntegrationReceiptMetadata> Receipts);
+    IntegrationDiagnosticPage<IntegrationReceiptMetadata> Receipts,
+    IntegrationRecoveryConfirmation? RecoveryConfirmation = null);

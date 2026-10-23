@@ -3,16 +3,26 @@ using Microsoft.EntityFrameworkCore;
 using ProspectionCrm.Api.Dtos.CalendarEvents;
 using ProspectionCrm.Api.Dtos.Integrations;
 using ProspectionCrm.Api.Entities;
+using ProspectionCrm.Api.Services.Integrations;
 
 namespace ProspectionCrm.Api.Services.Calendar;
 
 public sealed partial class CalendarEventDeliveryService
 {
     // Never calls transport. Receipt processing and the business mutation commit together.
-    public async Task ReconcileAsync(Guid workspace, Guid id, CancellationToken token = default)
+    public Task ReconcileAsync(Guid workspace, Guid id, CancellationToken token = default) =>
+        ReconcileCoreAsync(workspace, id, null, null, token);
+
+    internal Task RecoverRecordedEvidenceAsync(Guid workspace, Guid id, Guid operation,
+        IntegrationRecoveryRequest request, CancellationToken token) => ReconcileCoreAsync(workspace, id, operation, request, token);
+
+    private async Task ReconcileCoreAsync(Guid workspace, Guid id, Guid? operation,
+        IntegrationRecoveryRequest? recovery, CancellationToken token)
     {
         await Human(workspace, token);
-        await using var tx = await db.Database.BeginTransactionAsync(token); await Lock(workspace, token);
+        await using var tx = await db.Database.BeginTransactionAsync(token);
+        if (recovery is not null) await db.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '5s'", token);
+        await Lock(workspace, token);
         await Human(workspace, token);
         var initial = await FindAsync(workspace, id, token) ?? throw Error("CalendarDeliveryNotFound", 404);
         var plan = await ApprovedPlan(workspace, initial.CalendarEventPlanId, token);
@@ -22,6 +32,18 @@ public sealed partial class CalendarEventDeliveryService
         var receipts = await db.IntegrationReceipts.AsNoTracking().Where(x => x.OperationId == op.Id && x.ProcessedAt == null)
             .OrderBy(x => x.EvidenceNumber).ToListAsync(token);
         var now = await CalendarSyncLocks.Now(db, token);
+        if (recovery is not null)
+        {
+            var c = recovery.Confirmation;
+            if (recovery.Action != IntegrationRecoveryAudit.Action || operation != op.Id || c.OperationId != op.Id
+                || c.BusinessId != d.Id || c.Type != op.Type || c.BusinessStatus != d.StatusCode
+                || recovery.ExpectedRevision != op.Revision || c.Revision != op.Revision
+                || op.CompletedAt is not null || Terminal(d)
+                || d.StatusCode is not ("result-received" or "awaiting-result" or "operation-unknown")
+                || op.StatusCode is not ("result-received" or "awaiting-result")
+                || receipts.Count is < 1 or > 100 || !receipts.Select(x => x.MessageId).Order().SequenceEqual(c.ReceiptIds.Order()))
+                throw Error("RecoveryRejected");
+        }
         if (d.StatusCode == "conflict") return; // Sticky diagnosis and original receipts are retained for inspection.
         var proofs = new List<CalendarEventResult>();
         string? invalid = null; var decisiveHash = d.ProofHash;
@@ -47,6 +69,7 @@ public sealed partial class CalendarEventDeliveryService
         }
         if (invalid is not null)
         {
+            if (recovery is not null) throw Error("RecoveryRejected");
             Conflict(d, invalid, now); await Persist(d, token); await tx.CommitAsync(token); return;
         }
         var decisive = proofs.FirstOrDefault(x => x.Outcome != "unknown");
@@ -69,6 +92,7 @@ public sealed partial class CalendarEventDeliveryService
             if (proofs.Count == 0 && clock.GetUtcNow() - d.StartedAt < TimeSpan.FromMinutes(2)) throw Error("CalendarAttemptNotRecoverable");
             d.StatusCode = "operation-unknown"; d.DiagnosticCode = "CalendarOperationUnknown";
         }
+        if (recovery is not null && d.StatusCode == "conflict") throw Error("RecoveryRejected");
         foreach (var receipt in receipts)
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "IntegrationReceipts" SET "ProcessedAt"={now} WHERE "MessageId"={receipt.MessageId}
@@ -79,6 +103,13 @@ public sealed partial class CalendarEventDeliveryService
                 WHERE "OperationId"={op.Id} AND "StatusCode"='started'
                 """, token);
         if (receipts.Count != 0 || !Terminal(d)) await Persist(d, token);
+        if (recovery is not null)
+        {
+            var actor = await human.RequireAsync(token);
+            if (actor.WorkspaceId != workspace) throw new UnauthorizedAccessException();
+            db.ActivityEntries.Add(IntegrationRecoveryAudit.Entry(workspace, actor.UserId, op.Id, "processed:" + d.StatusCode, now));
+            await db.SaveChangesAsync(token); // Failure rolls back processing, business mutation and audit together.
+        }
         await tx.CommitAsync(token);
     }
 

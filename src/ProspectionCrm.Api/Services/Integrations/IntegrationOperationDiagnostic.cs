@@ -43,6 +43,18 @@ public sealed partial class IntegrationSupervisionService
                 && x.StartedAt != null && x.StartedAt <= databaseNow.AddMinutes(-2)
                 && db.EmailAccounts.Any(a => a.Id == x.EmailAccountId && a.WorkspaceId == workspaceId), token);
         }
+        IntegrationRecoveryConfirmation? recoveryConfirmation = null;
+        if (op.Type is "calendar.event.create" or "calendar.event.update" && op.State == "evidence-pending"
+            && op.BusinessId is { } businessId && op.BusinessStatusCode is "result-received" or "awaiting-result" or "operation-unknown"
+            && op.CompletedAt is null && proofDiagnostic is null)
+        {
+            var revision = await db.IntegrationOperations.Where(x => x.Id == op.Id && x.WorkspaceId == workspaceId)
+                .Select(x => x.Revision).SingleAsync(token);
+            var pendingIds = await receiptsQuery.Where(x => x.ProcessedAt == null).OrderBy(x => x.EvidenceNumber)
+                .Select(x => x.MessageId).Take(101).ToListAsync(token);
+            if (pendingIds.Count is > 0 and <= 100)
+                recoveryConfirmation = new(op.Id, businessId, op.Type, op.BusinessStatusCode, revision, pendingIds);
+        }
         await tx.CommitAsync(token);
 
         var anomalies = new List<string>();
@@ -98,6 +110,6 @@ public sealed partial class IntegrationSupervisionService
                 review || emailRecovery ? route : null, review || emailRecovery ? op.BusinessId : null,
                 emailRecovery ? "EmailAttemptRecoveryPreconditionsVerified"
                     : review ? "ProofAndBusinessPreconditionsNotVerified" : "NoVerifiedReconciliationAction"),
-            new(attemptOffset, limit, op.AttemptCount, attempts), new(receiptOffset, limit, receiptCount, receipts));
+            new(attemptOffset, limit, op.AttemptCount, attempts), new(receiptOffset, limit, receiptCount, receipts), recoveryConfirmation);
     }
 }
