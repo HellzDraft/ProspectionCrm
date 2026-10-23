@@ -29,10 +29,11 @@ public abstract class CalendarEventPlanFixture(AutomationJobDatabase database)
         public Guid Workspace => Host.Operator.WorkspaceId;
         public void Dispose() { Client.Dispose(); Host.Dispose(); }
     }
-    protected async Task<Scenario> Prepare(ProspectionCrm.Api.Services.Calendar.ICalendarEventTransport? transport = null)
+    protected async Task<Scenario> Prepare(ProspectionCrm.Api.Services.Calendar.ICalendarEventTransport? transport = null, Action<SecurityTestHost>? configure = null)
     {
         var host = await SecurityTestHost.CreateAsync(database); var network = new NoNetwork(); host.TransportHandler = () => network;
         host.CalendarEventTransport = transport;
+        configure?.Invoke(host);
         var client = host.Client(); await SecurityTestHost.LoginAsync(client);
         await using var db = Db();
         db.AutomationRuntimeSettings.Add(new() { WorkspaceId = host.Operator.WorkspaceId, IsEnabled = true, OperatingModeCode = "automatic" });

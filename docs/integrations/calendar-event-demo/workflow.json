@@ -1,0 +1,90 @@
+{
+  "name": "Phase 9.6.4.2 - simulated calendar event execution",
+  "active": false,
+  "nodes": [
+    {
+      "id": "51167b87-1ce1-46a2-aec7-63e37a036e33",
+      "name": "Receive raw command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ee8f210f-3108-4b9d-b80d-421ecd2fc9c5",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-calendar-event-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "8b25f2da-0485-42be-ab3e-ddf4c4e92e93",
+      "name": "Verify and callback",
+      "type": "CUSTOM.crmCalendarEvent",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "workspaceId": "",
+        "connectionId": "",
+        "calendarAccountId": "",
+        "calendarId": "",
+        "externalCalendarId": ""
+      }
+    },
+    {
+      "id": "13ddee98-2ac6-4965-991d-4676310e9dae",
+      "name": "Return transport status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $json.responseCode === 202 ? \"accepted\" : \"rejected\" } }}",
+        "options": {
+          "responseCode": "={{ $json.responseCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive raw command": {
+      "main": [
+        [
+          {
+            "node": "Verify and callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and callback": {
+      "main": [
+        [
+          {
+            "node": "Return transport status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 12,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  }
+}

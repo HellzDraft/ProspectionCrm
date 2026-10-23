@@ -111,7 +111,23 @@ public sealed partial class CalendarEventDeliveryService(ProspectionCrmDbContext
         await tx.CommitAsync(token); return IntegrationReception.Recorded;
     }
 
-    private async Task<(CalendarEventPlan, Entities.Calendar)> Authorize(Guid workspace, Guid id, CancellationToken token)
+    // A second durable check immediately before HTTP. The transaction ends before any network I/O.
+    internal async Task ValidateTransportAsync(CalendarEventCommand command, Guid workspace, Guid connection, CancellationToken token)
+    {
+        if (command.Snapshot.WorkspaceId != workspace || command.Snapshot.ConnectionId != connection)
+            throw Error("CalendarDeliveryBindingInvalid");
+        await using var tx = await db.Database.BeginTransactionAsync(token); await Lock(workspace, token);
+        var initial = await FindAsync(workspace, command.DeliveryId, token) ?? throw Error("CalendarDeliveryNotFound");
+        var (plan, calendar) = await Authorize(workspace, initial.CalendarEventPlanId, token, initial.Id);
+        var (d, op) = await Locked(workspace, initial.Id, token); MatchPlan(d, plan, calendar);
+        if (d.ConnectionId != connection || d.StatusCode != "dispatching" || op.StatusCode != "awaiting-result"
+            || !await db.IntegrationAttempts.AnyAsync(x => x.OperationId == op.Id && x.Number == 1 && x.StatusCode == "started", token)
+            || CalendarEventContracts.Serialize(command) != CalendarEventContracts.Serialize(Command(d, op, plan)))
+            throw Error("CalendarDeliveryBindingInvalid");
+        await tx.CommitAsync(token);
+    }
+
+    private async Task<(CalendarEventPlan, Entities.Calendar)> Authorize(Guid workspace, Guid id, CancellationToken token, Guid? currentAttempt = null)
     {
         var plan = await ApprovedPlan(workspace, id, token);
         var config = integrations.CurrentValue;
@@ -127,7 +143,7 @@ public sealed partial class CalendarEventDeliveryService(ProspectionCrmDbContext
         if ((await new AutomationCircuitBreakerService(db, clock).ReadAsync(settings, token)).CanReset) throw Error("CalendarCircuitOpen");
         var now = await CalendarSyncLocks.Now(db, token);
         // Workspace execution quotas include other authorized effects and email sends.
-        async Task<int> Count(DateTimeOffset since) => await db.CalendarEventDeliveries.CountAsync(x => x.WorkspaceId == workspace && x.StartedAt >= since, token)
+        async Task<int> Count(DateTimeOffset since) => await db.CalendarEventDeliveries.CountAsync(x => x.WorkspaceId == workspace && x.StartedAt >= since && x.Id != currentAttempt, token)
             + await db.EmailSendDeliveries.CountAsync(x => x.WorkspaceId == workspace && x.StartedAt >= since, token)
             + await db.AutomationExecutions.CountAsync(x => x.WorkspaceId == workspace && x.IsAutomaticAttempt && x.StartedAt >= since, token);
         if (await Count(now.AddMinutes(-1)) >= settings.MaxExecutionsPerMinute || await Count(now.AddDays(-1)) >= settings.MaxExecutionsPerDay)
